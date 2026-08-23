@@ -1,0 +1,20 @@
+services:
+  simulador:
+    build: .
+    container_name: webots_rltools_env
+    # Keep the container running in the background
+    tty: true
+    # Environment variables needed for GUI export
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - USER=${USER}
+    volumes:
+      # Mount current directory into the container
+      - .:/workspace
+      # Mount X11 socket for graphical communication
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # Share host network and IPC for performance
+    network_mode: host
+    ipc: host
+
