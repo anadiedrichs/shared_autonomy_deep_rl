@@ -1,0 +1,24 @@
+# Simulación / entornos RL
+gymnasium>=0.29
+
+# RLtools (wrapper Python, entrenamiento SAC nativo en C++)
+rltools
+
+# Baseline "framework tradicional" (PPO)
+stable-baselines3>=2.4
+torch>=2.0
+
+# Monitoreo de entrenamiento
+tensorboard>=2.18
+
+# Análisis de resultados
+numpy
+pandas
+matplotlib
+seaborn
+
+# Ajuste de hiperparámetros (objetivo específico: análisis de sensibilidad)
+optuna
+
+# Testing
+pytest

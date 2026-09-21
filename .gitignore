@@ -216,3 +216,27 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# Entrenamiento / resultados
+runs/
+logs/
+*.zip
+*.h  # checkpoints exportados por RLtools (regenerables)
+tensorboard_logs/
+
+# Webots
+*.wbproj
+webots_project/controllers/**/*.pyc
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
