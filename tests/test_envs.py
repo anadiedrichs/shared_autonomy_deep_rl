@@ -87,9 +87,84 @@ def test_drone_robot_supervisor_reset_and_step():
     assert env.episode_step == 1
 
 
+def test_reward_goal_directed():
+    """Valida las fórmulas de recompensa orientada a la meta."""
+    from src.rewards.reward_goal_directed import (
+        walls_proximity_penalization,
+        penalization_distance_to_target,
+        compute_goal_directed_reward,
+    )
+
+    # Ecuación 3.1: 50x - 10
+    assert np.isclose(walls_proximity_penalization(0.10), -5.0)
+    assert np.isclose(walls_proximity_penalization(0.0), -10.0)
+
+    # Ecuación 3.2: 1 / x
+    assert np.isclose(penalization_distance_to_target(1.0), 1.0)
+    assert np.isclose(penalization_distance_to_target(0.5), 2.0)
+
+    # Meta alcanzada (+10 normalizado a +1.0)
+    r_goal = compute_goal_directed_reward(
+        goal_reached=True,
+        is_terminal_failure=False,
+        min_obstacle_dist_m=0.5,
+        dist_to_target_m=0.1,
+    )
+    assert np.isclose(r_goal, 1.0)
+
+    # Falla terminal (-10 normalizado a -1.0)
+    r_fail = compute_goal_directed_reward(
+        goal_reached=False,
+        is_terminal_failure=True,
+        min_obstacle_dist_m=0.5,
+        dist_to_target_m=1.0,
+    )
+    assert np.isclose(r_fail, -1.0)
+
+
+def test_corner_env_continuous():
+    """Valida el entorno CornerEnvContinuous y sus condiciones lógicas."""
+    from src.envs.corner_env_continuous import CornerEnvContinuous
+
+    env = CornerEnvContinuous(corner_name="cone_1")
+
+    # Reset
+    obs, info = env.reset(seed=10)
+    assert obs.shape == (11,)
+    assert "corner" in info
+    assert "dist_min_target" in info
+
+    # Step
+    action = np.array([0.1, 0.1, 0.0, 0.0], dtype=np.float32)
+    next_obs, reward, terminated, truncated, info = env.step(action)
+    assert next_obs.shape == (11,)
+    assert -1.0 <= reward <= 1.0
+    assert isinstance(terminated, bool)
+    assert isinstance(truncated, bool)
+
+    # Prueba de límites geométricos
+    env.x_global = 1.5
+    assert env.is_out_of_bounds() is True
+    env.x_global = 0.0
+    assert env.is_out_of_bounds() is False
+
+    # Prueba de caída al suelo (alt < 0.10)
+    env.alt = 0.05
+    assert env.is_done() is True
+    assert env.corner == "fall"
+
+    # Prueba de objetivo alcanzado en vuelo seguro (cerca del objetivo a [0.8, 0.8])
+    env.alt = 0.55
+    env.x_global = 0.80
+    env.y_global = 0.80
+    assert env.achieve_goal() is True
+
+
 if __name__ == "__main__":
     test_normalize_to_range()
     test_drone_robot_supervisor_spaces()
     test_denormalize_action()
     test_drone_robot_supervisor_reset_and_step()
+    test_reward_goal_directed()
+    test_corner_env_continuous()
     print("Todos los tests pasaron exitosamente.")
