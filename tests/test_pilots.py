@@ -114,10 +114,45 @@ def test_laggy_pilot_invalid_probability():
         pass
 
 
+def test_optimal_pilot_dummy():
+    """Valida la inferencia unificada con backend dummy y funciones personalizadas."""
+    from src.pilots.optimal_pilot import OptimalPilot
+
+    # Piloto dummy por defecto (hover neutro: [0, 0, 0, 0])
+    pilot_default = OptimalPilot(backend="dummy")
+    obs = np.zeros(11, dtype=np.float32)
+    act = pilot_default.get_action(obs)
+    assert np.allclose(act, np.zeros(4, dtype=np.float32))
+
+    # Piloto dummy con función personalizada
+    custom_func = lambda o: np.array([0.2, -0.3, 0.1, 0.0], dtype=np.float32)
+    pilot_custom = OptimalPilot(backend="dummy", model_instance=custom_func)
+    act_custom = pilot_custom.get_action(obs)
+    assert np.allclose(act_custom, np.array([0.2, -0.3, 0.1, 0.0], dtype=np.float32))
+
+    # Probar alias choose_action
+    act_alias, states = pilot_custom.choose_action(obs)
+    assert np.allclose(act_alias, act_custom)
+    assert states == []
+
+
+def test_optimal_pilot_unsupported_backend():
+    """Valida que lance ValueError ante backends no reconocidos."""
+    from src.pilots.optimal_pilot import OptimalPilot
+
+    try:
+        OptimalPilot(backend="backend_inexistente")
+        assert False, "Debería haber lanzado ValueError ante backend no soportado"
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     test_noisy_pilot_zero_noise()
     test_noisy_pilot_with_noise_and_clipping()
     test_laggy_pilot_always_repeat()
     test_laggy_pilot_never_repeat()
     test_laggy_pilot_invalid_probability()
+    test_optimal_pilot_dummy()
+    test_optimal_pilot_unsupported_backend()
     print("Todos los tests de pilotos pasaron exitosamente.")
