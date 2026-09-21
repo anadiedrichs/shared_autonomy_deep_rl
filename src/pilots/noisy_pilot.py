@@ -1,39 +1,73 @@
+# -*- coding: utf-8 -*-
 """
-Port continuo de NoisyPilot (tesis 2025).
+Piloto sintético con inyección de ruido gaussiano sobre la acción continua.
 
-Original (discreto): el agente elige una acción al azar un porcentaje del
-tiempo (parámetro alpha) en lugar de ejecutar la política óptima.
-
-Versión continua: se le suma ruido gaussiano al vector de acción del piloto
-óptimo, en vez de reemplazarlo por completo por una acción aleatoria. Esto es
-una decisión de diseño razonable para pasar de discreto a continuo, pero
-todavía no está validada contra el original -> TODO: confirmar con la autora
-si el comportamiento resultante es comparable al NoisyPilot de la tesis 2025
-antes de usarlo en los experimentos finales.
-
-TODO:
-    - Definir sigma (desviación estándar del ruido) como parámetro, análogo al
-      alpha de la tesis 2025 (0.05, 0.1 en los experimentos originales).
-    - Confirmar si el ruido se aplica a las 4 componentes por igual o con
-      sigmas distintos por componente (p.ej. más ruido en yaw que en altura).
+Simula imprecisión de pilotaje humano o temblor en los comandos de control continuo,
+sumando una perturbación gaussiana N(0, sigma^2) a la política del piloto óptimo.
 """
 
 import numpy as np
 
 
 class NoisyPilot:
-    """Piloto óptimo + ruido gaussiano sobre la acción continua."""
+    """
+    Piloto sintético que perturba las acciones continuas del piloto óptimo con ruido gaussiano.
+    """
 
-    def __init__(self, optimal_pilot, sigma: float = 0.1, seed: int | None = None):
+    def __init__(
+        self,
+        optimal_pilot,
+        sigma: float | np.ndarray = 0.1,
+        seed: int | None = None,
+    ):
+        """
+        Inicializa el NoisyPilot.
+
+        Args:
+            optimal_pilot: Instancia del piloto base u óptimo (debe proveer get_action o predict).
+            sigma: Desviación estándar del ruido gaussiano (escalar o vector de 4 elementos).
+            seed: Semilla para el generador de números aleatorios independiente.
+        """
         self.optimal_pilot = optimal_pilot
         self.sigma = sigma
         self._rng = np.random.default_rng(seed)
 
+    def _get_base_action(self, observation: np.ndarray) -> np.ndarray:
+        """
+        Obtiene la acción base propuesta por el piloto óptimo según su interfaz disponible.
+        """
+        if hasattr(self.optimal_pilot, "get_action"):
+            act = self.optimal_pilot.get_action(observation)
+        elif hasattr(self.optimal_pilot, "predict"):
+            act, _ = self.optimal_pilot.predict(observation, deterministic=True)
+        elif hasattr(self.optimal_pilot, "choose_action"):
+            act_res = self.optimal_pilot.choose_action(observation)
+            act = act_res[0] if isinstance(act_res, tuple) else act_res
+        else:
+            raise TypeError("El objeto optimal_pilot no expone get_action, predict ni choose_action.")
+
+        return np.asarray(act, dtype=np.float32)
+
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        TODO:
-            a_opt = self.optimal_pilot.get_action(observation)
-            noise = self._rng.normal(0, self.sigma, size=a_opt.shape)
-            return np.clip(a_opt + noise, -1, 1)
+        Calcula la acción perturbada sumando ruido gaussiano y recortando al rango [-1.0, 1.0].
+
+        Args:
+            observation: Vector de observaciones del entorno.
+
+        Returns:
+            np.ndarray: Vector de acción de 4 dimensiones en [-1.0, 1.0].
         """
-        raise NotImplementedError
+        base_action = self._get_base_action(observation)
+        noise = self._rng.normal(0.0, self.sigma, size=base_action.shape).astype(np.float32)
+        noisy_action = np.clip(base_action + noise, -1.0, 1.0)
+        return noisy_action
+
+    def choose_action(self, observation: np.ndarray) -> tuple[np.ndarray, list]:
+        """
+        Alias compatible con la interfaz histórica de la tesis (Diedrichs, 2025).
+
+        Returns:
+            tuple: (acción seleccionada, lista de estados auxiliares vacía).
+        """
+        return self.get_action(observation), []
