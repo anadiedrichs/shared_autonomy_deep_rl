@@ -29,8 +29,9 @@ def train_sb3_ppo(
     seed: int = 7,
     learning_rate: float = 1e-4,
     gamma: float = 0.97,
+    ent_coef: float = 0.01,
     corner_name: str = "cone_1",
-    max_episode_steps: int = 10_000,
+    max_episode_steps: int = 50_000,
     log_dir: str = "./logs/ppo",
     model_save_path: str = "./models/ppo_optimal_pilot",
     checkpoint_freq: int = 20_000,
@@ -56,13 +57,32 @@ def train_sb3_ppo(
     """
     try:
         from stable_baselines3 import PPO
-        from stable_baselines3.common.callbacks import CheckpointCallback
+        from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+        from stable_baselines3.common.logger import HParam
         from stable_baselines3.common.monitor import Monitor
     except ImportError as e:
         raise ImportError(
             f"No se pudo importar stable-baselines3: {e}. "
             "Asegúrate de tenerlo instalado con 'pip install stable-baselines3'."
         )
+
+    class HParamCallback(BaseCallback):
+        """Callback para registrar hiperparámetros en la pestaña HPARAMS de TensorBoard."""
+
+        def __init__(self, hparams: dict, metrics: dict | None = None, verbose: int = 0):
+            super().__init__(verbose)
+            self.hparams = hparams
+            self.metrics = metrics or {"rollout/ep_rew_mean": 0.0}
+
+        def _on_training_start(self) -> None:
+            self.logger.record(
+                "hparams",
+                HParam(self.hparams, self.metrics),
+                exclude=("stdout", "log", "json", "csv"),
+            )
+
+        def _on_step(self) -> bool:
+            return True
 
     # Crear directorios de salida
     os.makedirs(log_dir, exist_ok=True)
@@ -83,7 +103,7 @@ def train_sb3_ppo(
     )
 
     print(
-        f"[PPO Training] Configurando PPO: lr={learning_rate}, gamma={gamma}, "
+        f"[PPO Training] Configurando PPO: lr={learning_rate}, gamma={gamma}, ent_coef={ent_coef}, "
         f"timesteps={total_timesteps}, seed={seed}"
     )
     model = PPO(
@@ -92,6 +112,7 @@ def train_sb3_ppo(
         learning_rate=learning_rate,
         gamma=gamma,
         gae_lambda=0.95,
+        ent_coef=ent_coef,
         vf_coef=0.5,
         seed=seed,
         tensorboard_log=log_dir,
@@ -99,8 +120,28 @@ def train_sb3_ppo(
         verbose=verbose,
     )
 
-    # Callback para guardar checkpoints periódicos
+    # Callbacks de entrenamiento
     callbacks = []
+
+    # 1. Registro de hiperparámetros en TensorBoard (HPARAMS)
+    hparams_dict = {
+        "algorithm": "SB3-PPO",
+        "learning_rate": learning_rate,
+        "gamma": gamma,
+        "gae_lambda": 0.95,
+        "ent_coef": ent_coef,
+        "vf_coef": 0.5,
+        "seed": seed,
+        "total_timesteps": total_timesteps,
+        "corner_name": corner_name,
+        "max_episode_steps": max_episode_steps,
+    }
+    metrics_dict = {
+        "rollout/ep_rew_mean": 0.0,
+    }
+    callbacks.append(HParamCallback(hparams=hparams_dict, metrics=metrics_dict, verbose=verbose))
+
+    # 2. Checkpoints periódicos opcionales
     if checkpoint_freq > 0:
         checkpoint_callback = CheckpointCallback(
             save_freq=checkpoint_freq,
@@ -113,7 +154,8 @@ def train_sb3_ppo(
     print(f"[PPO Training] Iniciando entrenamiento por {total_timesteps} timesteps...")
     model.learn(
         total_timesteps=total_timesteps,
-        callback=callbacks if callbacks else None,
+        callback=callbacks,
+        tb_log_name=f"ppo_lr{learning_rate}_gamma{gamma}_seed{seed}",
         progress_bar=False,
     )
 
@@ -140,6 +182,12 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-4, help="Tasa de aprendizaje.")
     parser.add_argument("--gamma", type=float, default=0.97, help="Factor de descuento gamma.")
     parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=0.01,
+        help="Coeficiente de entropía para fomentar la exploración continua (por defecto 0.01).",
+    )
+    parser.add_argument(
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo (cone_1)."
     )
     parser.add_argument(
@@ -161,6 +209,7 @@ if __name__ == "__main__":
         seed=args.seed,
         learning_rate=args.lr,
         gamma=args.gamma,
+        ent_coef=args.ent_coef,
         corner_name=args.corner,
         log_dir=args.log_dir,
         model_save_path=args.save_path,

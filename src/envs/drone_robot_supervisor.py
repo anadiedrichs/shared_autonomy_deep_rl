@@ -114,7 +114,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     MAX_HEIGHT = 0.70  # Altura máxima permitida en vuelo (metros)
     HEIGHT_INITIAL = 0.30  # Altura objetivo tras despegue (metros)
     HEIGHT_INCREASE = 0.05  # Incremento en rampa de despegue (metros)
-    WAITING_TIME = 5.0  # Tiempo de estabilización en segundos tras despegue
+    WAITING_TIME = 1.0  # Tiempo de estabilización en segundos tras despegue
 
     def __init__(
         self,

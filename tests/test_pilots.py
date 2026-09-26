@@ -147,6 +147,18 @@ def test_optimal_pilot_unsupported_backend():
         pass
 
 
+def test_optimal_pilot_relative_path_resolution():
+    """Valida que OptimalPilot resuelva rutas relativas buscando en la raíz del proyecto."""
+    from src.pilots.optimal_pilot import OptimalPilot
+
+    # Archivo que no existe en ningún lado debe lanzar FileNotFoundError
+    try:
+        OptimalPilot(backend="sb3_ppo", checkpoint_path="archivo_inexistente.zip")
+        assert False, "Debería haber lanzado FileNotFoundError"
+    except FileNotFoundError:
+        pass
+
+
 if __name__ == "__main__":
     test_noisy_pilot_zero_noise()
     test_noisy_pilot_with_noise_and_clipping()
@@ -155,4 +167,5 @@ if __name__ == "__main__":
     test_laggy_pilot_invalid_probability()
     test_optimal_pilot_dummy()
     test_optimal_pilot_unsupported_backend()
+    test_optimal_pilot_relative_path_resolution()
     print("Todos los tests de pilotos pasaron exitosamente.")

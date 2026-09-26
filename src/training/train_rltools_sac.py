@@ -48,6 +48,7 @@ def train_rltools_sac(
     corner_name: str = "cone_1",
     max_episode_steps: int = 10_000,
     header_save_path: str = "./models/optimal_pilot_sac_checkpoint.h",
+    log_dir: str = "./logs/sac",
     verbose: bool = True,
 ):
     """
@@ -59,6 +60,7 @@ def train_rltools_sac(
         corner_name: Identificador DEF del cono objetivo en Webots.
         max_episode_steps: Límite máximo de pasos por episodio.
         header_save_path: Ruta del archivo header C (.h) para exportar la política entrenada.
+        log_dir: Directorio para guardar logs y métricas de TensorBoard.
         verbose: Si es True, imprime progreso periódico en consola.
 
     Returns:
@@ -73,6 +75,28 @@ def train_rltools_sac(
         )
 
     os.makedirs(os.path.dirname(os.path.abspath(header_save_path)), exist_ok=True)
+
+    # Configuración de TensorBoard y registro de hiperparámetros
+    writer = None
+    if log_dir is not None:
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+            run_dir = os.path.join(log_dir, f"sac_seed{seed}")
+            os.makedirs(run_dir, exist_ok=True)
+            writer = SummaryWriter(log_dir=run_dir)
+            hparams = {
+                "algorithm": "RLtools-SAC",
+                "max_steps": max_steps,
+                "seed": seed,
+                "corner_name": corner_name,
+                "max_episode_steps": max_episode_steps,
+            }
+            metrics = {
+                "train/step": 0,
+            }
+            writer.add_hparams(hparams, metrics)
+        except ImportError:
+            writer = None
 
     print(f"[RLtools-SAC] Creando fábrica de entorno (esquina: {corner_name})...")
     env_factory = make_env_factory(corner_name=corner_name, max_episode_steps=max_episode_steps)
@@ -89,14 +113,20 @@ def train_rltools_sac(
         finished = state.step()
         step_count += 1
 
-        if verbose and (step_count % 10_000 == 0 or finished):
-            print(f"[RLtools-SAC] Progreso: paso {step_count}/{max_steps} completado.")
+        if step_count % 10_000 == 0 or finished:
+            if verbose:
+                print(f"[RLtools-SAC] Progreso: paso {step_count}/{max_steps} completado.")
+            if writer is not None:
+                writer.add_scalar("train/step", step_count, step_count)
 
     print(f"[RLtools-SAC] Entrenamiento finalizado. Exportando política a {header_save_path}...")
     policy_c_header = state.export_policy()
 
     with open(header_save_path, "w", encoding="utf-8") as f:
         f.write(policy_c_header)
+
+    if writer is not None:
+        writer.close()
 
     print(f"[RLtools-SAC] Header C exportado exitosamente en: {header_save_path}")
     return state, policy_c_header
@@ -123,6 +153,12 @@ def parse_args():
         default="./models/optimal_pilot_sac_checkpoint.h",
         help="Ruta destino para el header C exportado.",
     )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="./logs/sac",
+        help="Directorio de logs y TensorBoard para RLtools.",
+    )
     return parser.parse_args()
 
 
@@ -133,4 +169,5 @@ if __name__ == "__main__":
         seed=args.seed,
         corner_name=args.corner,
         header_save_path=args.export_path,
+        log_dir=args.log_dir,
     )

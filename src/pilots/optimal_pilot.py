@@ -51,6 +51,17 @@ class OptimalPilot:
         """
         Carga el checkpoint desde el disco según el backend seleccionado.
         """
+        # Resolución inteligente de rutas relativas si no se encuentra directamente desde CWD
+        if self.checkpoint_path is not None and not os.path.exists(self.checkpoint_path):
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            candidate = os.path.normpath(os.path.join(project_root, self.checkpoint_path.lstrip("./")))
+            if os.path.exists(candidate):
+                self.checkpoint_path = candidate
+            else:
+                candidate_models = os.path.join(project_root, "models", os.path.basename(self.checkpoint_path))
+                if os.path.exists(candidate_models):
+                    self.checkpoint_path = candidate_models
+
         if self.checkpoint_path is None or not os.path.exists(self.checkpoint_path):
             raise FileNotFoundError(
                 f"El archivo de checkpoint no fue encontrado en: {self.checkpoint_path}"

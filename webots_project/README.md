@@ -3,8 +3,10 @@
 ## Migración del mundo (.wbt)
 
 El escenario (habitación cerrada 2x2m, sin obstáculos, con las 4 esquinas como
-posibles objetivos, descrito en la sección 3.5.1 de la tesis 2025) no requiere
-cambios geométricos para pasar a acciones continuas. Pasos para migrarlo:
+posibles objetivos, descripto en la sección 3.5.1 de la tesis 2025) no requiere
+cambios geométricos para pasar a acciones continuas. 
+
+Pasos para migrarlo:
 
 1. Copiar el/los archivo(s) `.wbt` desde
    `drone-deep-rl/v1_shared_autonomy/.../worlds/` a `worlds/` en este repo.
