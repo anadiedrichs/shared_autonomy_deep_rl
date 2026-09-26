@@ -31,7 +31,33 @@ xhost +local:$USER
 
 ---
 
-### Paso 2: Construir y levantar el contenedor
+### Paso 2: Configurar Aceleración Gráfica por Hardware (Opcional pero recomendado)
+Por defecto, [`docker-compose.yaml`](../docker-compose.yaml) utiliza renderizado universal por software (CPU). Para que Webots se ejecute a 60 FPS fluidos aprovechando la GPU de tu máquina física, utiliza el archivo de sobreescritura local:
+
+1. Copia la plantilla de configuración:
+   ```bash
+   cp docker-compose.override.yaml.example docker-compose.override.yaml
+   ```
+2. Adapta según tu hardware:
+   - **GPU Intel / AMD (como Intel Iris Plus/Xe o Radeon)**:
+     Basta con dejar activa la directiva `/dev/dri`:
+     ```yaml
+     services:
+       simulador:
+         devices:
+           - /dev/dri:/dev/dri
+     ```
+   - **GPU NVIDIA dedicada**:
+     Requiere tener instalado `nvidia-container-toolkit` en el host y descomentar el bloque NVIDIA en `docker-compose.override.yaml`.
+   - **Máquinas sin GPU / Servidores headless / CI**:
+     No crees el archivo `docker-compose.override.yaml` (o bórralo). Docker usará CPU por defecto sin arrojar ningún error de dispositivo faltante.
+
+> [!TIP]
+> El archivo `docker-compose.override.yaml` está ignorado en `.gitignore` para que cada computadora mantenga su propia aceleración gráfica sin sobreescribir la de las demás.
+
+---
+
+### Paso 3: Construir y levantar el contenedor
 Desde la raíz del repositorio (`0001-webots-rl`), compila la imagen (si es la primera vez o hubo cambios en el `Dockerfile`) e inicia el servicio en segundo plano:
 
 ```bash
@@ -42,7 +68,7 @@ docker compose up -d --build
 
 ---
 
-### Paso 3: Acceder a la terminal interactiva del contenedor
+### Paso 4: Acceder a la terminal interactiva del contenedor
 Para abrir una sesión interactiva de Bash dentro del contenedor en ejecución:
 
 ```bash
@@ -56,7 +82,7 @@ Al ingresar:
 
 ---
 
-### Paso 4: Ejecutar Webots
+### Paso 5: Ejecutar Webots
 
 Una vez dentro de la terminal del contenedor, dispones de dos modalidades de ejecución:
 
@@ -80,7 +106,7 @@ xvfb-run webots --batch --mode=fast --no-rendering /workspace/webots_project/wor
 
 ---
 
-### Paso 5: Ejecutar entrenamientos y pruebas dentro del contenedor
+### Paso 6: Ejecutar entrenamientos y pruebas dentro del contenedor
 
 Desde `/workspace` dentro del contenedor puedes ejecutar los scripts directamente:
 
@@ -104,7 +130,7 @@ Desde `/workspace` dentro del contenedor puedes ejecutar los scripts directament
 
 ---
 
-### Paso 6: Detener el contenedor al finalizar
+### Paso 7: Detener el contenedor al finalizar
 Cuando termines tu sesión de trabajo, sal de la terminal del contenedor con `exit` y detén los servicios desde el host:
 
 ```bash

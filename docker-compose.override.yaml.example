@@ -1,0 +1,27 @@
+# Plantilla de configuración de aceleración gráfica para Docker Compose
+# Para activar la aceleración en tu máquina:
+#   cp docker-compose.override.yaml.example docker-compose.override.yaml
+# y descomenta la sección correspondiente a tu hardware.
+
+# ==============================================================================
+# OPCIÓN A: GPU Intel / AMD (Estándar Linux Direct Rendering Infrastructure)
+# Válido para Intel Iris Xe, UHD, HD Graphics y tarjetas AMD Radeon
+# ==============================================================================
+services:
+  simulador:
+    devices:
+      - /dev/dri:/dev/dri
+
+# ==============================================================================
+# OPCIÓN B: GPU NVIDIA dedicada
+# Requiere 'nvidia-container-toolkit' instalado y configurado en el sistema host
+# ==============================================================================
+# services:
+#   simulador:
+#     deploy:
+#       resources:
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: all
+#               capabilities: [gpu]

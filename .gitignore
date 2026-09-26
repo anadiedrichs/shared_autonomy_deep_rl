@@ -240,3 +240,6 @@ webots_project/controllers/**/*.pyc
 
 # Sistema
 .DS_Store
+
+# Docker local overrides (aceleración gráfica específica por máquina)
+docker-compose.override.yaml
