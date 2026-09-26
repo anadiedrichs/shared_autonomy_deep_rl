@@ -33,6 +33,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         max_episode_steps: int = 10_000,
         corner_name: str = "cone_1",
         enable_trajectory_logging: bool = False,
+        verbose: int = 1,
     ):
         """
         Inicializa el entorno continuo de la habitación con esquinas.
@@ -41,6 +42,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             max_episode_steps: Número máximo de pasos por episodio.
             corner_name: Identificador DEF del nodo objetivo en el mundo Webots (por defecto "cone_1").
             enable_trajectory_logging: Si es True, habilita el guardado en disco de la trayectoria CSV.
+            verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
         """
         self.corner_name = corner_name
         self.target_node = None
@@ -56,6 +58,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         super().__init__(
             max_episode_steps=max_episode_steps,
             enable_trajectory_logging=enable_trajectory_logging,
+            verbose=verbose,
         )
 
         self._init_targets()
@@ -144,6 +147,8 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.truncated = True
             self.is_success = False
             self.corner = "fall"
+            if self.verbose >= 1:
+                print(f"[CornerEnv] Caída detectada (altitud: {self.alt:.2f}m). Episodio terminado.")
             return True
 
         # 2. Salida de límites de la habitación
@@ -152,6 +157,11 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.truncated = True
             self.is_success = False
             self.corner = "out_of_bounds"
+            if self.verbose >= 1:
+                print(
+                    f"[CornerEnv] Fuera de límites detectado ([x={self.x_global:.2f}, y={self.y_global:.2f}]). "
+                    "Episodio terminado."
+                )
             return True
 
         # 3. Éxito al llegar al objetivo en altitud adecuada
@@ -160,6 +170,11 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.truncated = False
             self.is_success = True
             self.corner = self.corner_name
+            if self.verbose >= 1:
+                print(
+                    f"[CornerEnv] ¡Objetivo alcanzado con éxito en '{self.corner_name}'! "
+                    f"(Distancia: {self.dist_min_target:.2f}m, Altitud: {self.alt:.2f}m)"
+                )
             return True
 
         # 4. Truncado por puntuación acumulada extrema
@@ -171,6 +186,11 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.truncated = True
             self.is_success = False
             self.corner = "score_limit"
+            if self.verbose >= 1:
+                print(
+                    f"[CornerEnv] Límite de puntaje acumulado alcanzado ({self.episode_score:.2f}). "
+                    "Episodio terminado."
+                )
             return True
 
         # 5. Límite máximo de pasos
@@ -179,6 +199,11 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.truncated = True
             self.is_success = False
             self.corner = "max_steps"
+            if self.verbose >= 1:
+                print(
+                    f"[CornerEnv] Límite máximo de pasos alcanzado ({self.episode_step}/{self.max_episode_steps}). "
+                    "Episodio terminado."
+                )
             return True
 
         return False

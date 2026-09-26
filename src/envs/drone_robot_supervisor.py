@@ -116,10 +116,24 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     HEIGHT_INCREASE = 0.05  # Incremento en rampa de despegue (metros)
     WAITING_TIME = 5.0  # Tiempo de estabilización en segundos tras despegue
 
-    def __init__(self, max_episode_steps: int = 10_000, enable_trajectory_logging: bool = False):
+    def __init__(
+        self,
+        max_episode_steps: int = 10_000,
+        enable_trajectory_logging: bool = False,
+        verbose: int = 1,
+    ):
+        """
+        Inicializa el supervisor del robot Crazyflie.
+
+        Args:
+            max_episode_steps: Límite máximo de pasos por episodio.
+            enable_trajectory_logging: Habilita el guardado en disco de la trayectoria CSV.
+            verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
+        """
         super().__init__()
         self.max_episode_steps = max_episode_steps
         self.enable_trajectory_logging = enable_trajectory_logging
+        self.verbose = int(verbose)
         self.render_mode = None
 
         # Definición formal de espacios Gymnasium
@@ -297,7 +311,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             self.the_drone_took_off = True
             self.alt = self.HEIGHT_INITIAL
             self.height_desired = self.HEIGHT_INITIAL
+            if self.verbose >= 1:
+                print(f"[Crazyflie] Modo testing/mock: despegue simulado a {self.HEIGHT_INITIAL:.2f}m.")
             return
+
+        if self.verbose >= 1:
+            print(f"[Crazyflie] Iniciando secuencia de despegue (altitud objetivo: {self.MAX_HEIGHT:.2f}m)...")
 
         while not self.the_drone_took_off:
             if self.alt < self.MAX_HEIGHT:
@@ -307,11 +326,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             else:
                 if self.timestamp_take_off == 0.0:
                     self.timestamp_take_off = self.getTime()
+                    if self.verbose >= 1:
+                        print(f"[Crazyflie] Altitud {self.alt:.2f}m alcanzada. Esperando estabilización ({self.WAITING_TIME:.1f}s)...")
 
                 if (self.getTime() - self.timestamp_take_off) > self.WAITING_TIME:
                     self.timestamp_take_off = 0.0
                     self.the_drone_took_off = True
                     self.height_desired = self.alt
+                    if self.verbose >= 1:
+                        print(f"[Crazyflie] CRAZYFLIE TOOK OFF ! (Altitud: {self.alt:.2f}m, estabilizado tras {self.WAITING_TIME:.1f}s)")
 
             motor_power = self.PID_crazyflie.pid(
                 self.dt,

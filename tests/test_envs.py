@@ -160,6 +160,17 @@ def test_corner_env_continuous():
     assert env.achieve_goal() is True
 
 
+def test_verbose_mode():
+    """Valida la configuración del modo verbose en los entornos."""
+    from src.envs.corner_env_continuous import CornerEnvContinuous
+
+    env_silent = CornerEnvContinuous(verbose=0)
+    assert env_silent.verbose == 0
+
+    env_verbose = CornerEnvContinuous(verbose=1)
+    assert env_verbose.verbose == 1
+
+
 if __name__ == "__main__":
     test_normalize_to_range()
     test_drone_robot_supervisor_spaces()
@@ -167,4 +178,5 @@ if __name__ == "__main__":
     test_drone_robot_supervisor_reset_and_step()
     test_reward_goal_directed()
     test_corner_env_continuous()
+    test_verbose_mode()
     print("Todos los tests pasaron exitosamente.")

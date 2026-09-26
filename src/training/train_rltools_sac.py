@@ -33,6 +33,7 @@ def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 10_00
             corner_name=corner_name,
             max_episode_steps=max_episode_steps,
             enable_trajectory_logging=False,
+            verbose=0,
         )
         if gym is not None and hasattr(gym, "wrappers"):
             env = gym.wrappers.RescaleAction(env, min_action=-1.0, max_action=1.0)

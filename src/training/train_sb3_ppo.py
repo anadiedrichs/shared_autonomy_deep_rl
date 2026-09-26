@@ -73,6 +73,7 @@ def train_sb3_ppo(
         corner_name=corner_name,
         max_episode_steps=max_episode_steps,
         enable_trajectory_logging=False,
+        verbose=0,
     )
     env = Monitor(raw_env, filename=os.path.join(log_dir, "monitor.csv"))
 
