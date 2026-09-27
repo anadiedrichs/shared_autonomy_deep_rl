@@ -5,12 +5,11 @@ Entorno continuo del Crazyflie en habitación 2x2m con objetivo en una esquina (
 Port continuo de la clase SimpleCornerEnvRS10 de la tesis (Diedrichs, 2025, drone-deep-rl).
 """
 
-from math import cos, sin, sqrt
+from math import sqrt
 import numpy as np
 
-from src.envs.drone_robot_supervisor import DroneRobotSupervisor, spaces
+from src.envs.drone_robot_supervisor import DroneRobotSupervisor
 from src.rewards.reward_goal_directed import compute_goal_directed_reward
-from src.utils.utilities import normalize_to_range
 
 
 class CornerEnvContinuous(DroneRobotSupervisor):
@@ -62,12 +61,6 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             verbose=verbose,
         )
 
-        # Espacio de observaciones extendido (14 dimensiones):
-        # 11 sensores base de DroneRobotSupervisor + 3 variables relativas a la meta
-        self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(14,), dtype=np.float32
-        )
-
         self._init_targets()
         self.put_drone_in_the_center()
 
@@ -105,18 +98,6 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             or self.y_global > self.Y_MAX
         )
 
-    def _get_target_pos(self) -> tuple[float, float]:
-        """
-        Obtiene las coordenadas (x, y) del cono objetivo en Webots.
-        Usa la posición de respaldo para pruebas sin simulador activo.
-        """
-        if self.target_node is not None and hasattr(self.target_node, "getField"):
-            target_field = self.target_node.getField("translation")
-            if target_field is not None and hasattr(target_field, "getSFVec3f"):
-                pos = target_field.getSFVec3f()
-                return float(pos[0]), float(pos[1])
-        return float(self._target_pos_fallback[0]), float(self._target_pos_fallback[1])
-
     def get_distance_to_target(self) -> float:
         """
         Calcula la distancia euclídea en el plano horizontal (XY) entre el dron y el objetivo.
@@ -124,44 +105,18 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         Returns:
             float: Distancia en metros al objetivo.
         """
-        tx, ty = self._get_target_pos()
-        dx = self.x_global - tx
-        dy = self.y_global - ty
+        if self.target_node is not None and hasattr(self.target_node, "getField"):
+            target_field = self.target_node.getField("translation")
+            if target_field is not None and hasattr(target_field, "getSFVec3f"):
+                target_pos = target_field.getSFVec3f()
+                dx = self.x_global - target_pos[0]
+                dy = self.y_global - target_pos[1]
+                return float(sqrt(dx * dx + dy * dy))
+
+        # Cálculo de respaldo para pruebas unitarias / CI sin Webots
+        dx = self.x_global - self._target_pos_fallback[0]
+        dy = self.y_global - self._target_pos_fallback[1]
         return float(sqrt(dx * dx + dy * dy))
-
-    def get_observations(self) -> np.ndarray:
-        """
-        Genera el vector de observaciones continuo de 14 dimensiones para CornerEnvContinuous.
-
-        Combina las 11 lecturas base del dron con 3 observaciones relativas a la meta:
-            12. Distancia euclídea normalizada al cono objetivo en [-1.0, 1.0].
-            13. Desplazamiento longitudinal hacia la meta en el marco del cuerpo del dron (body X / forward) en [-1.0, 1.0].
-            14. Desplazamiento lateral hacia la meta en el marco del cuerpo del dron (body Y / sideways) en [-1.0, 1.0].
-
-        Returns:
-            np.ndarray: Vector de 14 valores continuos en [-1.0, 1.0].
-        """
-        base_obs = super().get_observations()
-
-        self.dist_min_target = self.get_distance_to_target()
-        dist_norm = normalize_to_range(self.dist_min_target, 0.0, 3.0, -1.0, 1.0, clip=True)
-
-        tx, ty = self._get_target_pos()
-        dx_global = tx - self.x_global
-        dy_global = ty - self.y_global
-
-        cos_yaw = cos(self.yaw)
-        sin_yaw = sin(self.yaw)
-
-        # Proyección en ejes del cuerpo del dron (body-fixed frame)
-        dx_body = dx_global * cos_yaw + dy_global * sin_yaw
-        dy_body = -dx_global * sin_yaw + dy_global * cos_yaw
-
-        forward_norm = normalize_to_range(dx_body, -2.5, 2.5, -1.0, 1.0, clip=True)
-        sideways_norm = normalize_to_range(dy_body, -2.5, 2.5, -1.0, 1.0, clip=True)
-
-        target_obs = np.array([dist_norm, forward_norm, sideways_norm], dtype=np.float32)
-        return np.concatenate([base_obs, target_obs])
 
     def achieve_goal(self) -> bool:
         """
@@ -176,23 +131,20 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def is_done(self) -> bool:
         """
-        Evalúa las condiciones de terminación física del episodio:
+        Evalúa las condiciones de finalización del episodio:
         1. Caída al suelo (altitud < 0.10 m)
         2. Salida de los límites del escenario
         3. Éxito al alcanzar el cono objetivo en vuelo seguro
         4. Truncado por límites de puntaje acumulado
-
-        Nota: El límite de pasos por tiempo (max_episode_steps) se maneja
-        como truncamiento en step() según el estándar Gymnasium, sin penalizar
-        al agente como si fuera una caída.
+        5. Límite de pasos del episodio excedido
 
         Returns:
-            bool: True si el episodio terminó por una condición terminal física.
+            bool: True si el episodio ha terminado o debe truncarse.
         """
         # 1. Caída del cuadricóptero
         if self.alt < 0.10:
             self.terminated = True
-            self.truncated = False
+            self.truncated = True
             self.is_success = False
             self.corner = "fall"
             if self.verbose >= 1:
@@ -202,7 +154,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         # 2. Salida de límites de la habitación
         if self.is_out_of_bounds():
             self.terminated = True
-            self.truncated = False
+            self.truncated = True
             self.is_success = False
             self.corner = "out_of_bounds"
             if self.verbose >= 1:
@@ -231,12 +183,25 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             or self.episode_score >= self.MAX_EPISODE_SCORE
         ):
             self.terminated = True
-            self.truncated = False
+            self.truncated = True
             self.is_success = False
             self.corner = "score_limit"
             if self.verbose >= 1:
                 print(
                     f"[CornerEnv] Límite de puntaje acumulado alcanzado ({self.episode_score:.2f}). "
+                    "Episodio terminado."
+                )
+            return True
+
+        # 5. Límite máximo de pasos
+        if self.episode_step >= self.max_episode_steps:
+            self.terminated = True
+            self.truncated = True
+            self.is_success = False
+            self.corner = "max_steps"
+            if self.verbose >= 1:
+                print(
+                    f"[CornerEnv] Límite máximo de pasos alcanzado ({self.episode_step}/{self.max_episode_steps}). "
                     "Episodio terminado."
                 )
             return True
@@ -248,7 +213,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         Calcula la recompensa del paso actual mediante compute_goal_directed_reward.
 
         Returns:
-            float: Recompensa escalar (+100.0 al alcanzar la meta, shaping diferencial y coste temporal).
+            float: Recompensa normalizada en [-1.0, 1.0].
         """
         self.dist_min_target = self.get_distance_to_target()
 
@@ -257,13 +222,14 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
         ) / 1000.0
 
-        # Evaluación de fallos terminales (caída, fuera de límites o score extremo)
+        # Evaluación de fallos terminales
         goal_reached = self.achieve_goal()
         is_failure = (
             self.alt < 0.10
             or self.is_out_of_bounds()
             or (self.episode_score <= self.MIN_EPISODE_SCORE)
             or (self.episode_score >= self.MAX_EPISODE_SCORE)
+            or (self.episode_step >= self.max_episode_steps)
         )
 
         min_threshold_m = self.MIN_DIST_OBSTACLES / 1000.0  # 100 mm = 0.10 m
@@ -273,12 +239,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             is_terminal_failure=is_failure,
             min_obstacle_dist_m=min_obstacle_m,
             dist_to_target_m=self.dist_min_target,
-            prev_dist_to_target_m=self.prev_dist_min_target,
             min_dist_threshold_m=min_threshold_m,
-            goal_reward=100.0,
-            failure_reward=-10.0,
-            progress_weight=30.0,
-            time_penalty=0.01,
         )
 
         self.prev_dist_min_target = self.dist_min_target
@@ -296,7 +257,6 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         self.dist_min_target = self.get_distance_to_target()
         self.prev_dist_min_target = self.dist_min_target
         self.corner = None
-        obs = self.get_observations()
         info = self.get_info()
         return obs, info
 

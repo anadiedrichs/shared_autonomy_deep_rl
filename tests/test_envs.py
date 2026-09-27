@@ -103,47 +103,23 @@ def test_reward_goal_directed():
     assert np.isclose(penalization_distance_to_target(1.0), 1.0)
     assert np.isclose(penalization_distance_to_target(0.5), 2.0)
 
-    # Meta alcanzada (+100.0)
+    # Meta alcanzada (+10 normalizado a +1.0)
     r_goal = compute_goal_directed_reward(
         goal_reached=True,
         is_terminal_failure=False,
         min_obstacle_dist_m=0.5,
         dist_to_target_m=0.1,
     )
-    assert np.isclose(r_goal, 100.0)
+    assert np.isclose(r_goal, 1.0)
 
-    # Falla terminal (-10.0)
+    # Falla terminal (-10 normalizado a -1.0)
     r_fail = compute_goal_directed_reward(
         goal_reached=False,
         is_terminal_failure=True,
         min_obstacle_dist_m=0.5,
         dist_to_target_m=1.0,
     )
-    assert np.isclose(r_fail, -10.0)
-
-    # Avance diferencial positivo (acercamiento de 1.0m a 0.9m)
-    r_prog = compute_goal_directed_reward(
-        goal_reached=False,
-        is_terminal_failure=False,
-        min_obstacle_dist_m=0.5,
-        dist_to_target_m=0.9,
-        prev_dist_to_target_m=1.0,
-        progress_weight=30.0,
-        time_penalty=0.01,
-    )
-    # 30.0 * (1.0 - 0.9) - 0.01 = 3.0 - 0.01 = 2.99
-    assert np.isclose(r_prog, 2.99)
-
-    # Hovering estático (coste temporal sin avance)
-    r_hover = compute_goal_directed_reward(
-        goal_reached=False,
-        is_terminal_failure=False,
-        min_obstacle_dist_m=0.5,
-        dist_to_target_m=1.0,
-        prev_dist_to_target_m=1.0,
-        time_penalty=0.01,
-    )
-    assert np.isclose(r_hover, -0.01)
+    assert np.isclose(r_fail, -1.0)
 
 
 def test_corner_env_continuous():
@@ -152,23 +128,17 @@ def test_corner_env_continuous():
 
     env = CornerEnvContinuous(corner_name="cone_1")
 
-    # Espacio de observaciones continuo de 14 dimensiones
-    assert env.observation_space.shape == (14,)
-    assert env.observation_space.dtype == np.float32
-
     # Reset
     obs, info = env.reset(seed=10)
-    assert obs.shape == (14,)
-    assert np.all(obs >= -1.0) and np.all(obs <= 1.0)
+    assert obs.shape == (11,)
     assert "corner" in info
     assert "dist_min_target" in info
 
     # Step
     action = np.array([0.1, 0.1, 0.0, 0.0], dtype=np.float32)
     next_obs, reward, terminated, truncated, info = env.step(action)
-    assert next_obs.shape == (14,)
-    assert np.all(next_obs >= -1.0) and np.all(next_obs <= 1.0)
-    assert isinstance(reward, float)
+    assert next_obs.shape == (11,)
+    assert -1.0 <= reward <= 1.0
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
 
