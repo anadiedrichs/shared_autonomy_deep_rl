@@ -193,6 +193,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.is_success = False
         self.terminated = False
         self.truncated = False
+        self.current_action = np.zeros(4, dtype=np.float32)
+        self.prev_action = np.zeros(4, dtype=np.float32)
 
         # Registro de trayectorias
         self.drone_trajectory_path = None
@@ -515,6 +517,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             tuple: (observation, reward, terminated, truncated, info)
         """
         self.episode_step += 1
+        self.current_action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
 
         vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd = self._denormalize_action(action)
 
@@ -552,6 +555,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.enable_trajectory_logging and self.drone_trajectory_file is not None:
             self.record_trajectory()
 
+        # Almacenar acción actual como previa para el siguiente paso
+        self.prev_action = np.copy(self.current_action)
+
         return obs, reward, terminated, truncated, info
 
     def reset(self, seed: int | None = None, options: dict | None = None):
@@ -579,6 +585,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.terminated = False
         self.truncated = False
         self.height_desired = self.HEIGHT_INITIAL
+        self.current_action = np.zeros(4, dtype=np.float32)
+        self.prev_action = np.zeros(4, dtype=np.float32)
 
         self._initialization()
         super().step(self.timestep)

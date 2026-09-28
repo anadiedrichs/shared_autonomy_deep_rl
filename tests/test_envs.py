@@ -92,34 +92,64 @@ def test_reward_goal_directed():
     from src.rewards.reward_goal_directed import (
         walls_proximity_penalization,
         penalization_distance_to_target,
+        obstacle_proximity_penalization,
         compute_goal_directed_reward,
     )
 
-    # Ecuación 3.1: 50x - 10
+    # Ecuación 3.1 legacy: 50x - 10
     assert np.isclose(walls_proximity_penalization(0.10), -5.0)
     assert np.isclose(walls_proximity_penalization(0.0), -10.0)
 
-    # Ecuación 3.2: 1 / x
+    # Ecuación 3.2 legacy: 1 / x
     assert np.isclose(penalization_distance_to_target(1.0), 1.0)
     assert np.isclose(penalization_distance_to_target(0.5), 2.0)
 
-    # Meta alcanzada (+10 normalizado a +1.0)
-    r_goal = compute_goal_directed_reward(
-        goal_reached=True,
-        is_terminal_failure=False,
-        min_obstacle_dist_m=0.5,
-        dist_to_target_m=0.1,
+    # Penalización exponencial a obstáculos (-0.5 * exp(-d / 0.10))
+    assert np.isclose(obstacle_proximity_penalization(0.0, amplitude=0.5, decay=0.10), -0.5)
+    assert np.isclose(
+        obstacle_proximity_penalization(0.10, amplitude=0.5, decay=0.10), -0.5 * np.exp(-1.0)
     )
-    assert np.isclose(r_goal, 1.0)
 
-    # Falla terminal (-10 normalizado a -1.0)
-    r_fail = compute_goal_directed_reward(
-        goal_reached=False,
-        is_terminal_failure=True,
-        min_obstacle_dist_m=0.5,
-        dist_to_target_m=1.0,
+    # Meta alcanzada (+50.0) con avance positivo
+    r_goal = compute_goal_directed_reward(
+        d_prev=0.2,
+        d_now=0.1,
+        d_min=1.0,
+        reached=True,
+        collided=False,
     )
-    assert np.isclose(r_fail, -1.0)
+    # Progreso: 30*(0.2-0.1)=3.0, Obstáculo (d=1.0) ~0.0, Time: -0.01, Reached: +50.0 => ~52.99
+    assert r_goal >= 50.0
+
+    # Falla / colisión (-50.0)
+    r_fail = compute_goal_directed_reward(
+        d_prev=1.0,
+        d_now=1.0,
+        d_min=0.0,
+        reached=False,
+        collided=True,
+    )
+    # Colisión: -50.0 - 0.5 (contacto) - 0.01 (tiempo) => -50.51
+    assert r_fail <= -50.0
+
+    # Hovering estático en el centro (costo temporal sin progreso)
+    r_hover = compute_goal_directed_reward(
+        d_prev=1.0,
+        d_now=1.0,
+        d_min=1.0,
+    )
+    assert np.isclose(r_hover, -0.01, atol=1e-3)
+
+    # Penalización por cambio brusco de acción (suavidad)
+    r_smooth = compute_goal_directed_reward(
+        d_prev=1.0,
+        d_now=1.0,
+        action=np.array([1.0, 0.0, 0.0, 0.0]),
+        prev_action=np.array([0.0, 0.0, 0.0, 0.0]),
+        d_min=1.0,
+    )
+    # -0.01 (tiempo) - 0.05 * 1.0 (suavidad) = -0.06
+    assert np.isclose(r_smooth, -0.06, atol=1e-3)
 
 
 def test_corner_env_continuous():
@@ -138,7 +168,7 @@ def test_corner_env_continuous():
     action = np.array([0.1, 0.1, 0.0, 0.0], dtype=np.float32)
     next_obs, reward, terminated, truncated, info = env.step(action)
     assert next_obs.shape == (11,)
-    assert -1.0 <= reward <= 1.0
+    assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
 

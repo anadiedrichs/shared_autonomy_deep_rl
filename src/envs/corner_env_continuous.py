@@ -144,7 +144,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         # 1. Caída del cuadricóptero
         if self.alt < 0.10:
             self.terminated = True
-            self.truncated = True
+            self.truncated = False
             self.is_success = False
             self.corner = "fall"
             if self.verbose >= 1:
@@ -154,7 +154,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         # 2. Salida de límites de la habitación
         if self.is_out_of_bounds():
             self.terminated = True
-            self.truncated = True
+            self.truncated = False
             self.is_success = False
             self.corner = "out_of_bounds"
             if self.verbose >= 1:
@@ -183,25 +183,12 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             or self.episode_score >= self.MAX_EPISODE_SCORE
         ):
             self.terminated = True
-            self.truncated = True
+            self.truncated = False
             self.is_success = False
             self.corner = "score_limit"
             if self.verbose >= 1:
                 print(
                     f"[CornerEnv] Límite de puntaje acumulado alcanzado ({self.episode_score:.2f}). "
-                    "Episodio terminado."
-                )
-            return True
-
-        # 5. Límite máximo de pasos
-        if self.episode_step >= self.max_episode_steps:
-            self.terminated = True
-            self.truncated = True
-            self.is_success = False
-            self.corner = "max_steps"
-            if self.verbose >= 1:
-                print(
-                    f"[CornerEnv] Límite máximo de pasos alcanzado ({self.episode_step}/{self.max_episode_steps}). "
                     "Episodio terminado."
                 )
             return True
@@ -213,33 +200,41 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         Calcula la recompensa del paso actual mediante compute_goal_directed_reward.
 
         Returns:
-            float: Recompensa normalizada en [-1.0, 1.0].
+            float: Recompensa continua no normalizada.
         """
         self.dist_min_target = self.get_distance_to_target()
 
         # Distancia mínima a obstáculos en metros
-        min_obstacle_m = min(
+        d_min = min(
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
         ) / 1000.0
 
-        # Evaluación de fallos terminales
-        goal_reached = self.achieve_goal()
-        is_failure = (
+        # Evaluación de eventos terminales
+        reached = self.achieve_goal()
+        collided = bool(
             self.alt < 0.10
             or self.is_out_of_bounds()
             or (self.episode_score <= self.MIN_EPISODE_SCORE)
             or (self.episode_score >= self.MAX_EPISODE_SCORE)
-            or (self.episode_step >= self.max_episode_steps)
         )
 
-        min_threshold_m = self.MIN_DIST_OBSTACLES / 1000.0  # 100 mm = 0.10 m
-
         reward = compute_goal_directed_reward(
-            goal_reached=goal_reached,
-            is_terminal_failure=is_failure,
-            min_obstacle_dist_m=min_obstacle_m,
-            dist_to_target_m=self.dist_min_target,
-            min_dist_threshold_m=min_threshold_m,
+            d_prev=self.prev_dist_min_target,
+            d_now=self.dist_min_target,
+            action=self.current_action,
+            prev_action=self.prev_action,
+            ang_vel=self.angular_velocity,
+            d_min=d_min,
+            collided=collided,
+            reached=reached,
+            progress_weight=30.0,
+            obstacle_weight=0.5,
+            obstacle_decay=0.10,
+            action_smoothness_weight=0.05,
+            angular_velocity_weight=0.01,
+            time_penalty=0.01,
+            reached_bonus=50.0,
+            collision_penalty=50.0,
         )
 
         self.prev_dist_min_target = self.dist_min_target
