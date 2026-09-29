@@ -191,6 +191,12 @@ def test_corner_env_continuous():
     env.y_global = 0.80
     assert env.achieve_goal() is True
 
+    # Umbral de altitud alt > 0.20
+    env.alt = 0.25
+    assert env.achieve_goal() is True
+    env.alt = 0.15
+    assert env.achieve_goal() is False
+
 
 def test_verbose_mode():
     """Valida la configuración del modo verbose en los entornos."""

@@ -23,6 +23,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
     MIN_DIST_OBSTACLES = 100  # Distancia mínima a paredes en mm (100 mm = 0.10 m)
     MIN_EPISODE_SCORE = -1_000.0  # Puntaje mínimo acumulado antes de truncar
     MAX_EPISODE_SCORE = 1_000.0  # Puntaje máximo acumulado antes de truncar
+    HEIGHT_INITIAL = 0.50  # Altura objetivo tras despegue (metros)
 
     # Límites espaciales de la habitación (2x2 metros centrada en [0, 0])
     X_MIN, X_MAX = -1.0, 1.0
@@ -121,13 +122,13 @@ class CornerEnvContinuous(DroneRobotSupervisor):
     def achieve_goal(self) -> bool:
         """
         Determina si el dron alcanzó con éxito el cono objetivo manteniéndose en vuelo.
-        Requiere estar a menos de DISTANCE_THRESHOLD (15 cm) y a una altitud mayor a 0.5 metros.
+        Requiere estar a menos de DISTANCE_THRESHOLD (15 cm) y a una altitud mayor a 0.20 metros.
 
         Returns:
             bool: True si la meta fue alcanzada válidamente en vuelo.
         """
         self.dist_min_target = self.get_distance_to_target()
-        return bool(self.dist_min_target <= self.DISTANCE_THRESHOLD and self.alt > 0.5)
+        return bool(self.dist_min_target <= self.DISTANCE_THRESHOLD and self.alt > 0.20)
 
     def is_done(self) -> bool:
         """
