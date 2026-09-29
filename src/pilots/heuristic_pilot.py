@@ -101,14 +101,27 @@ class HeuristicPilot:
 
     def _calculate_default_fixed_action(self) -> np.ndarray:
         """
-        Calcula la acción constante por defecto hacia la esquina objetivo.
-        Para un objetivo en el cuadrante (+x, +y), emite [speed, speed, 0.0, vz_climb].
+        Calcula la acción constante por defecto hacia la esquina objetivo en lazo abierto.
+        Toma en cuenta la orientación inicial del dron en el mundo de Webots (yaw ≈ π/2,
+        donde el frente del dron (eje +X local) apunta hacia el norte (+Y global) y su
+        lateral derecho (eje -Y local) apunta hacia el este (+X global)).
         """
         dx = float(self.target_position[0])
         dy = float(self.target_position[1])
 
-        vx_sign = 1.0 if dx >= 0.0 else -1.0
-        vy_sign = 1.0 if dy >= 0.0 else -1.0
+        # En el mundo Webots crazyflie.wbt, el dron inicia rotado ~90° (π/2 rad) hacia el norte (+Y global).
+        # Su frente (eje +X body) apunta hacia +Y global, y su lado derecho (eje -Y body) hacia +X global (+este).
+        yaw_init = np.pi / 2.0
+        if self.env is not None and getattr(self.env, "the_drone_took_off", False):
+            yaw_init = float(getattr(self.env, "yaw", np.pi / 2.0))
+        cos_y = cos(yaw_init)
+        sin_y = sin(yaw_init)
+
+        dx_body = dx * cos_y + dy * sin_y
+        dy_body = -dx * sin_y + dy * cos_y
+
+        vx_sign = 1.0 if dx_body >= 0.0 else -1.0
+        vy_sign = 1.0 if dy_body >= 0.0 else -1.0
 
         # vz = 0.60 para generar ascenso constante de 0.30m a 0.55m durante el vuelo
         return np.array(

@@ -28,21 +28,27 @@ class MockDroneEnv:
 
 def test_heuristic_pilot_open_loop_default():
     """Valida la generación de acciones constantes en lazo abierto (Enfoque 1)."""
-    # Cuadrante 1: cone_1 (+x, +y)
+    # Cuadrante 1: cone_1 (+x, +y en global -> adelante y derecha en body frame)
     pilot1 = HeuristicPilot(mode="open_loop", corner_name="cone_1")
     obs = np.zeros(11, dtype=np.float32)
     act1 = pilot1.get_action(obs)
     assert act1.shape == (4,)
-    assert act1[0] > 0.0  # vx > 0
-    assert act1[1] > 0.0  # vy > 0
+    assert act1[0] > 0.0  # vx > 0 (adelante)
+    assert act1[1] < 0.0  # vy < 0 (derecha)
     assert act1[2] == 0.0  # yaw = 0
     assert act1[3] > 0.0  # vz > 0 (ascenso)
 
-    # Cuadrante 3: cone_3 (-x, -y)
+    # Cuadrante 2: cone_2 (-x, +y en global -> adelante e izquierda en body frame)
+    pilot2 = HeuristicPilot(mode="open_loop", corner_name="cone_2")
+    act2 = pilot2.get_action(obs)
+    assert act2[0] > 0.0  # vx > 0 (adelante)
+    assert act2[1] > 0.0  # vy > 0 (izquierda)
+
+    # Cuadrante 3: cone_3 (-x, -y en global -> atrás e izquierda en body frame)
     pilot3 = HeuristicPilot(mode="enfoque1", corner_name="cone_3")
     act3 = pilot3.get_action(obs)
-    assert act3[0] < 0.0  # vx < 0
-    assert act3[1] < 0.0  # vy < 0
+    assert act3[0] < 0.0  # vx < 0 (atrás)
+    assert act3[1] > 0.0  # vy > 0 (izquierda)
     assert act3[3] > 0.0
 
 
