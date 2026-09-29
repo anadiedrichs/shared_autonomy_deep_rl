@@ -17,6 +17,7 @@ if project_root not in sys.path:
 
 
 from src.envs.corner_env_continuous import CornerEnvContinuous
+from src.pilots.heuristic_pilot import HeuristicPilot
 from src.pilots.optimal_pilot import OptimalPilot
 from src.pilots.noisy_pilot import NoisyPilot
 from src.pilots.laggy_pilot import LaggyPilot
@@ -41,16 +42,20 @@ def run_simulation(max_episodes: int | None = None):
     obs, info = env.reset()
     episode_count = 0
 
-    # Opción A1: Piloto heurístico base
+    # Opción A0: Piloto heurístico determinista (enfoque 1: open_loop, enfoque 2: proportional)
+    # pilot = HeuristicPilot(mode="proportional", corner_name="cone_1", env=env)
+    # pilot = HeuristicPilot(mode="open_loop", corner_name="cone_1")
+
+    # Opción A1: Piloto heurístico dummy
     # pilot = OptimalPilot(backend="dummy", model_instance=heuristic_pilot_fn)
 
     # Opción A2: Carga la red neuronal PPO entrenada (Stable-Baselines3)
-    # checkpoint_ppo = os.path.join(project_root, "models", "test_ppo_pilot.zip")
-    # pilot = OptimalPilot(backend="sb3_ppo", checkpoint_path=checkpoint_ppo)
+    checkpoint_ppo = os.path.join(project_root, "models", "test_ppo_pilot.zip")
+    pilot = OptimalPilot(backend="sb3_ppo", checkpoint_path=checkpoint_ppo)
 
     # Opción A3: Carga el checkpoint SAC entrenado con RLtools (.h)
-    checkpoint_sac = os.path.join(project_root, "models", "test_sac_checkpoint.h")
-    pilot = OptimalPilot(backend="rltools_sac", checkpoint_path=checkpoint_sac)
+    # checkpoint_sac = os.path.join(project_root, "models", "test_sac_checkpoint.h")
+    # pilot = OptimalPilot(backend="rltools_sac", checkpoint_path=checkpoint_sac)
 
     # Opción B: Piloto con Ruido Gaussiano (simula imprecisión/temblor)
     # pilot = NoisyPilot(optimal_pilot=pilot, sigma=0.25)

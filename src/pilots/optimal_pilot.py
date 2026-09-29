@@ -15,7 +15,7 @@ class OptimalPilot:
     Interfaz unificada para el piloto óptimo, abstrayendo el framework de entrenamiento.
     """
 
-    SUPPORTED_BACKENDS = ("sb3_ppo", "rltools_sac", "dummy")
+    SUPPORTED_BACKENDS = ("sb3_ppo", "rltools_sac", "dummy", "heuristic")
 
     def __init__(
         self,
@@ -23,15 +23,17 @@ class OptimalPilot:
         checkpoint_path: str | None = None,
         model_instance: object | None = None,
         deterministic: bool = True,
+        **kwargs,
     ):
         """
         Inicializa el piloto óptimo.
 
         Args:
-            backend: Framework del modelo ("sb3_ppo", "rltools_sac" o "dummy").
+            backend: Framework del modelo ("sb3_ppo", "rltools_sac", "dummy" o "heuristic").
             checkpoint_path: Ruta al archivo de checkpoint en disco (.zip, .pt, etc.).
             model_instance: Instancia pre-cargada opcional del modelo.
             deterministic: Si es True, ejecuta la política en modo determinista sin exploración.
+            **kwargs: Argumentos adicionales (por ejemplo para HeuristicPilot).
         """
         backend_lower = backend.lower()
         if backend_lower not in self.SUPPORTED_BACKENDS:
@@ -43,8 +45,12 @@ class OptimalPilot:
         self.checkpoint_path = checkpoint_path
         self.deterministic = deterministic
         self._model = model_instance
+        self._kwargs = kwargs
 
-        if self._model is None and checkpoint_path is not None:
+        if self.backend == "heuristic":
+            from src.pilots.heuristic_pilot import HeuristicPilot
+            self._model = HeuristicPilot(**kwargs)
+        elif self._model is None and checkpoint_path is not None:
             self._load_checkpoint()
 
     def _load_checkpoint(self):
@@ -130,6 +136,12 @@ class OptimalPilot:
                 raw_act = self._model(obs)
             else:
                 raw_act = np.zeros(4, dtype=np.float32)
+
+        elif self.backend == "heuristic":
+            if self._model is None:
+                from src.pilots.heuristic_pilot import HeuristicPilot
+                self._model = HeuristicPilot(**self._kwargs)
+            raw_act = self._model.get_action(obs)
 
         action = np.clip(np.asarray(raw_act, dtype=np.float32), -1.0, 1.0)
         return action
