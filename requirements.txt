@@ -8,8 +8,10 @@ rltools
 stable-baselines3>=2.4
 torch>=2.0
 
-# Monitoreo de entrenamiento
+# Monitoreo de entrenamiento y consola
 tensorboard>=2.18
+rich
+tqdm
 
 # Análisis de resultados
 numpy

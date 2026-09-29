@@ -36,6 +36,7 @@ def train_sb3_ppo(
     model_save_path: str = "./models/ppo_optimal_pilot",
     checkpoint_freq: int = 20_000,
     verbose: int = 1,
+    progress_bar: bool = True,
 ):
     """
     Ejecuta el ciclo de entrenamiento continuo de PPO con Stable-Baselines3.
@@ -51,6 +52,7 @@ def train_sb3_ppo(
         model_save_path: Ruta destino para el archivo .zip del modelo entrenado.
         checkpoint_freq: Frecuencia de pasos para guardar checkpoints intermedios.
         verbose: Nivel de detalle en salida estándar (0: nada, 1: info, 2: debug).
+        progress_bar: Si es True, muestra la barra de progreso durante learn() (requiere rich y tqdm).
 
     Returns:
         PPO: Instancia del modelo entrenado.
@@ -151,12 +153,23 @@ def train_sb3_ppo(
         )
         callbacks.append(checkpoint_callback)
 
+    # Comprobar disponibilidad de librerías para la barra de progreso
+    if progress_bar:
+        try:
+            import rich  # noqa: F401
+            import tqdm  # noqa: F401
+        except ImportError:
+            print(
+                "[PPO Training] Aviso: tqdm y rich son requeridos para la barra de progreso. Desactivando progress_bar."
+            )
+            progress_bar = False
+
     print(f"[PPO Training] Iniciando entrenamiento por {total_timesteps} timesteps...")
     model.learn(
         total_timesteps=total_timesteps,
         callback=callbacks,
         tb_log_name=f"ppo_lr{learning_rate}_gamma{gamma}_seed{seed}",
-        progress_bar=False,
+        progress_bar=progress_bar,
     )
 
     print(f"[PPO Training] Guardando modelo final en: {model_save_path}.zip")
@@ -179,6 +192,13 @@ def parse_args():
         help="Número total de pasos de simulación (timesteps).",
     )
     parser.add_argument("--seed", type=int, default=7, help="Semilla para reproducibilidad.")
+    parser.add_argument("--verbose", type=int, default=1, help="Nivel de logging: 0, 1 o 2.")
+    parser.add_argument(
+        "--progress-bar",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Muestra u oculta la barra de progreso en consola (requiere rich y tqdm).",
+    )
     parser.add_argument("--lr", type=float, default=1e-4, help="Tasa de aprendizaje.")
     parser.add_argument("--gamma", type=float, default=0.97, help="Factor de descuento gamma.")
     parser.add_argument(
@@ -220,4 +240,6 @@ if __name__ == "__main__":
         max_episode_steps=args.max_episode_steps,
         log_dir=args.log_dir,
         model_save_path=args.save_path,
+        verbose=args.verbose,
+        progress_bar=args.progress_bar,
     )
