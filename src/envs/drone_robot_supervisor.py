@@ -7,6 +7,7 @@ trabajo previo de tesis (Diedrichs, 2025, drone-deep-rl).
 """
 
 import os
+import sys
 import time
 from math import cos, pi, sin
 import numpy as np
@@ -30,48 +31,71 @@ except ImportError:  # pragma: no cover
 
     spaces = _DummySpaces
 
-# Importación desacoplada del Supervisor de Webots para permitir pruebas unitarias y CI sin GUI
-try:
-    from controller import Keyboard, Supervisor
-except ImportError:  # pragma: no cover
-    class Supervisor:
-        """Clase dummy que emula la API mínima de Webots Supervisor para pruebas fuera del simulador."""
+class _DummySupervisor:
+    """Clase dummy que emula la API mínima de Webots Supervisor para pruebas fuera del simulador."""
 
-        def __init__(self):
-            pass
+    def __init__(self):
+        pass
 
-        def getBasicTimeStep(self) -> float:
-            return 32.0
+    def getBasicTimeStep(self) -> float:
+        return 32.0
 
-        def getTime(self) -> float:
-            return 0.0
+    def getTime(self) -> float:
+        return 0.0
 
-        def step(self, timestep: int) -> int:
-            return 0
+    def step(self, timestep: int) -> int:
+        return 0
 
-        def getFromDef(self, name: str):
-            return None
+    def getFromDef(self, name: str):
+        return None
 
-        def getDevice(self, name: str):
-            return None
+    def getDevice(self, name: str):
+        return None
 
-        def simulationReset(self):
-            pass
+    def simulationReset(self):
+        pass
 
-        def simulationResetPhysics(self):
-            pass
+    def simulationResetPhysics(self):
+        pass
 
-    class Keyboard:
-        """Clase dummy que emula el dispositivo de teclado de Webots."""
 
-        def __init__(self):
-            pass
+class _DummyKeyboard:
+    """Clase dummy que emula el dispositivo de teclado de Webots."""
 
-        def enable(self, timestep: int):
-            pass
+    def __init__(self):
+        pass
 
-        def getKey(self) -> int:
-            return -1
+    def enable(self, timestep: int):
+        pass
+
+    def getKey(self) -> int:
+        return -1
+
+
+if os.environ.get("WEBOTS_MOCK", "0") == "1":
+    Supervisor = _DummySupervisor
+    Keyboard = _DummyKeyboard
+else:
+    # Auto-detección de WEBOTS_HOME y biblioteca controller de Webots si no está en PYTHONPATH
+    _webots_candidates = [
+        os.environ.get("WEBOTS_HOME", ""),
+        "/usr/local/webots",
+        "/snap/webots/current/usr/share/webots",
+    ]
+    for _candidate in _webots_candidates:
+        if _candidate and os.path.exists(_candidate):
+            if "WEBOTS_HOME" not in os.environ:
+                os.environ["WEBOTS_HOME"] = _candidate
+            _webots_py = os.path.join(_candidate, "lib", "controller", "python")
+            if os.path.exists(_webots_py) and _webots_py not in sys.path:
+                sys.path.append(_webots_py)
+            break
+
+    try:
+        from controller import Keyboard, Supervisor
+    except (ImportError, KeyError, OSError):  # pragma: no cover
+        Supervisor = _DummySupervisor
+        Keyboard = _DummyKeyboard
 
 
 from src.utils.pid_controller import pid_velocity_fixed_height_controller

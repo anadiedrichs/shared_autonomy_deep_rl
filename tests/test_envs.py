@@ -3,6 +3,8 @@
 Tests unitarios para DroneRobotSupervisor y utilidades del entorno.
 """
 
+import os
+os.environ["WEBOTS_MOCK"] = "1"
 import numpy as np
 try:
     import pytest
