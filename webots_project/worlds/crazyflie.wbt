@@ -53,7 +53,7 @@ DEF cone_4 TrafficCone {
 }
 DEF crazyflie Crazyflie {
   rotation -1.1394243734111017e-10 1.2189843410397195e-10 1 1.5028211429164624
-  controller "drone_shared_autonomy"
+  controller "<extern>"
   supervisor TRUE
   extensionSlot [
     Pen {

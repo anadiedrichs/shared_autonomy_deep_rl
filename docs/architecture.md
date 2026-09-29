@@ -106,6 +106,39 @@ combinación *aditiva* y continua, donde el copiloto:
 - No conoce la meta del piloto (a diferencia del piloto, que sí se entrena con una
   recompensa orientada a la meta, `reward_goal_directed.py`).
 
+## 5. Modelo de ejecución Webots: Controlador Externo (`<extern>`)
+
+En la tesis 2025 (`drone-deep-rl`), el flujo de trabajo probado consistía en abrir Webots y
+**ejecutar los scripts de control y entrenamiento directamente desde el IDE (Visual Studio Code)**
+o la terminal.
+
+Para mantener esta operatividad y desacoplar el entorno Gymnasium de la interfaz gráfica de Webots,
+el nodo Crazyflie en el mundo `.wbt` (`webots_project/worlds/crazyflie.wbt`) se configura con:
+
+```vrml
+DEF crazyflie Crazyflie {
+  ...
+  controller "<extern>"
+  supervisor TRUE
+}
+```
+
+### Justificación técnica:
+
+1. **Inversión de control requerida por Deep RL**: En frameworks como Stable-Baselines3 (PPO) y
+   RLtools (SAC), el bucle principal de control pertenece al algoritmo de aprendizaje
+   (`model.learn()` y `env.step()`), no al simulador. Al operar como controlador externo, el proceso
+   Python actúa como proceso maestro que avanza la simulación física paso a paso vía IPC
+   (`supervisor.step(timestep)`), permitiendo pausar el simulador durante el cálculo de gradientes
+   y optimizaciones en GPU.
+2. **Flexibilidad de ejecución (IDE / Terminal / Docker)**: Permite ejecutar scripts de evaluación
+   ([`src/evaluation/run_heuristic_episode.py`](file:///home/ana/0001-webots-rl/src/evaluation/run_heuristic_episode.py)) o entrenamiento
+   desde cualquier terminal, VS Code o contenedor Docker (`webots_rltools_env`), conectándose
+   automáticamente a la simulación física activa por memoria compartida (`ipc: host`).
+3. **Simulación acelerada sin renderizado (Headless)**: Hace posible entrenar a velocidades muy
+   superiores al tiempo real (10x-50x) mediante la opción headless de Webots:
+   `webots --batch --mode=fast --no-rendering <mundo.wbt>`.
+
 ## Preguntas abiertas / pendientes de confirmar
 
 - Parametrización exacta de `reward_general_safety.py`: pesos relativos entre penalización
