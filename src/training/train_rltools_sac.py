@@ -24,7 +24,7 @@ except ImportError:
     gym = None
 
 
-def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 10_000):
+def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000):
     """
     Crea la factoría del entorno requerida por la interfaz de RLtools.
     """
@@ -46,7 +46,7 @@ def train_rltools_sac(
     max_steps: int = 100_000,
     seed: int = 7,
     corner_name: str = "cone_1",
-    max_episode_steps: int = 10_000,
+    max_episode_steps: int = 1_000,
     header_save_path: str = "./models/optimal_pilot_sac_checkpoint.h",
     log_dir: str = "./logs/sac",
     verbose: bool = True,
@@ -143,6 +143,12 @@ def parse_args():
         default=100_000,
         help="Número máximo de pasos de entrenamiento.",
     )
+    parser.add_argument(
+        "--max-episode-steps",
+        type=int,
+        default=1_000,
+        help="Límite máximo de pasos por episodio antes de truncar.",
+    )
     parser.add_argument("--seed", type=int, default=7, help="Semilla para reproducibilidad.")
     parser.add_argument(
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo en Webots."
@@ -166,6 +172,7 @@ if __name__ == "__main__":
     args = parse_args()
     train_rltools_sac(
         max_steps=args.steps,
+        max_episode_steps=args.max_episode_steps,
         seed=args.seed,
         corner_name=args.corner,
         header_save_path=args.export_path,

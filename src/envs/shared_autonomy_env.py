@@ -30,7 +30,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
     Envuelve CornerEnvContinuous agregando la composición piloto + copiloto.
     """
 
-    def __init__(self, pilot, copilot=None, max_episode_steps: int = 10_000):
+    def __init__(self, pilot, copilot=None, max_episode_steps: int = 1_000):
         """
         Args:
             pilot: objeto con método get_action(observation) -> np.ndarray(4,),

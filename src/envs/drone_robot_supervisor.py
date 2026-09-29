@@ -142,7 +142,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def __init__(
         self,
-        max_episode_steps: int = 10_000,
+        max_episode_steps: int = 1_000,
         enable_trajectory_logging: bool = False,
         verbose: int = 1,
     ):
@@ -150,7 +150,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         Inicializa el supervisor del robot Crazyflie.
 
         Args:
-            max_episode_steps: Límite máximo de pasos por episodio.
+            max_episode_steps: Límite máximo de pasos por episodio (por defecto 1000).
             enable_trajectory_logging: Habilita el guardado en disco de la trayectoria CSV.
             verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
         """

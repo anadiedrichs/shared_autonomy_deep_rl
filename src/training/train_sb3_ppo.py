@@ -31,7 +31,7 @@ def train_sb3_ppo(
     gamma: float = 0.97,
     ent_coef: float = 0.01,
     corner_name: str = "cone_1",
-    max_episode_steps: int = 50_000,
+    max_episode_steps: int = 1_000,
     log_dir: str = "./logs/ppo",
     model_save_path: str = "./models/ppo_optimal_pilot",
     checkpoint_freq: int = 20_000,
@@ -46,7 +46,7 @@ def train_sb3_ppo(
         learning_rate: Tasa de aprendizaje del optimizador Adam.
         gamma: Factor de descuento para retornos futuros.
         corner_name: Identificador DEF del cono objetivo en Webots ("cone_1").
-        max_episode_steps: Límite máximo de pasos por episodio.
+        max_episode_steps: Límite máximo de pasos por episodio (por defecto 1000).
         log_dir: Directorio para guardar logs de TensorBoard y métricas de Monitor.
         model_save_path: Ruta destino para el archivo .zip del modelo entrenado.
         checkpoint_freq: Frecuencia de pasos para guardar checkpoints intermedios.
@@ -191,6 +191,12 @@ def parse_args():
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo (cone_1)."
     )
     parser.add_argument(
+        "--max-episode-steps",
+        type=int,
+        default=1000,
+        help="Límite máximo de pasos por episodio para CornerEnvContinuous (por defecto 1000).",
+    )
+    parser.add_argument(
         "--log-dir", type=str, default="./logs/ppo", help="Directorio de logs y TensorBoard."
     )
     parser.add_argument(
@@ -211,6 +217,7 @@ if __name__ == "__main__":
         gamma=args.gamma,
         ent_coef=args.ent_coef,
         corner_name=args.corner,
+        max_episode_steps=args.max_episode_steps,
         log_dir=args.log_dir,
         model_save_path=args.save_path,
     )

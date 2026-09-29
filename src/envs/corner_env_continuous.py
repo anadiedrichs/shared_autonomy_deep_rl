@@ -30,7 +30,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def __init__(
         self,
-        max_episode_steps: int = 10_000,
+        max_episode_steps: int = 1_000,
         corner_name: str = "cone_1",
         enable_trajectory_logging: bool = False,
         verbose: int = 1,
@@ -39,7 +39,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         Inicializa el entorno continuo de la habitación con esquinas.
 
         Args:
-            max_episode_steps: Número máximo de pasos por episodio.
+            max_episode_steps: Número máximo de pasos por episodio (por defecto 1000).
             corner_name: Identificador DEF del nodo objetivo en el mundo Webots (por defecto "cone_1").
             enable_trajectory_logging: Si es True, habilita el guardado en disco de la trayectoria CSV.
             verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
