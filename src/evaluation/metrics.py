@@ -197,6 +197,10 @@ def create_pilot_instance(
     sigma: float = 0.1,
     p_repeat: float = 0.2,
     seed: int = 42,
+    copilot_checkpoint: str | None = None,
+    copilot_backend: str = "auto",
+    residual_scale: float = 1.0,
+    base_pilot_type: str = "noisy",
 ) -> BasePilot:
     """
     Fábrica de instanciación unificada para cualquier piloto del ecosistema.
@@ -227,8 +231,31 @@ def create_pilot_instance(
         # Piloto base óptimo al que se le inyecta retardo
         base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
         return LaggyPilot(optimal_pilot=base, p_repeat=p_repeat, seed=seed)
+    elif pt == "assisted":
+        from src.copilot.residual_policy import AssistedPilot, ResidualPolicy
+
+        # Crear el piloto base asistido (por defecto noisy o el configurado)
+        base = create_pilot_instance(
+            pilot_type=base_pilot_type,
+            checkpoint=checkpoint,
+            backend=backend,
+            heuristic_mode=heuristic_mode,
+            corner=corner,
+            sigma=sigma,
+            p_repeat=p_repeat,
+            seed=seed,
+        )
+        copilot = ResidualPolicy(
+            checkpoint_path=copilot_checkpoint,
+            backend=copilot_backend,
+            residual_scale=residual_scale,
+        )
+        return AssistedPilot(pilot=base, copilot=copilot)
     else:
-        raise ValueError(f"Tipo de piloto desconocido: '{pilot_type}'. Opciones: optimal, heuristic, noisy, laggy.")
+        raise ValueError(
+            f"Tipo de piloto desconocido: '{pilot_type}'. "
+            "Opciones: optimal, heuristic, noisy, laggy, assisted."
+        )
 
 
 def parse_args():
@@ -240,8 +267,8 @@ def parse_args():
         "--pilot-type",
         type=str,
         default="optimal",
-        choices=["optimal", "heuristic", "noisy", "laggy"],
-        help="Tipo de piloto a evaluar (optimal, heuristic, noisy, laggy).",
+        choices=["optimal", "heuristic", "noisy", "laggy", "assisted"],
+        help="Tipo de piloto a evaluar (optimal, heuristic, noisy, laggy, assisted).",
     )
     parser.add_argument(
         "--checkpoint",
@@ -300,6 +327,32 @@ def parse_args():
         help="Probabilidad de repetición de acción para LaggyPilot (por defecto: 0.2).",
     )
     parser.add_argument(
+        "--copilot-checkpoint",
+        type=str,
+        default=None,
+        help="Ruta al checkpoint del copiloto (.zip o .h) si pilot-type=assisted.",
+    )
+    parser.add_argument(
+        "--copilot-backend",
+        type=str,
+        default="auto",
+        choices=["auto", "sb3_ppo", "sb3_sac", "rltools_sac", "dummy"],
+        help="Backend para el copiloto si pilot-type=assisted.",
+    )
+    parser.add_argument(
+        "--residual-scale",
+        type=float,
+        default=1.0,
+        help="Factor de escala para la acción residual del copiloto (por defecto: 1.0).",
+    )
+    parser.add_argument(
+        "--base-pilot-type",
+        type=str,
+        default="noisy",
+        choices=["optimal", "heuristic", "noisy", "laggy"],
+        help="Tipo de piloto base a asistir si pilot-type=assisted (por defecto: noisy).",
+    )
+    parser.add_argument(
         "--save-csv",
         type=str,
         default="./logs/eval_results.csv",
@@ -336,6 +389,10 @@ if __name__ == "__main__":
         sigma=args.sigma,
         p_repeat=args.p_repeat,
         seed=args.seed,
+        copilot_checkpoint=args.copilot_checkpoint,
+        copilot_backend=args.copilot_backend,
+        residual_scale=args.residual_scale,
+        base_pilot_type=args.base_pilot_type,
     )
 
     try:
