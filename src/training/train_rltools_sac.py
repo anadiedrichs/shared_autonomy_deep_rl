@@ -27,17 +27,25 @@ except ImportError:
 def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000):
     """
     Crea la factoría del entorno requerida por la interfaz de RLtools.
+    Utiliza el patrón singleton/persistente para evitar múltiples inicializaciones
+    de Webots Supervisor en el mismo proceso de Python.
     """
+    _env_instance = None
+
     def env_factory():
-        env = CornerEnvContinuous(
-            corner_name=corner_name,
-            max_episode_steps=max_episode_steps,
-            enable_trajectory_logging=False,
-            verbose=0,
-        )
-        if gym is not None and hasattr(gym, "wrappers"):
-            env = gym.wrappers.RescaleAction(env, min_action=-1.0, max_action=1.0)
-        return env
+        nonlocal _env_instance
+        if _env_instance is None:
+            _env_instance = CornerEnvContinuous(
+                corner_name=corner_name,
+                max_episode_steps=max_episode_steps,
+                enable_trajectory_logging=False,
+                verbose=0,
+            )
+            if gym is not None and hasattr(gym, "wrappers"):
+                _env_instance = gym.wrappers.RescaleAction(
+                    _env_instance, min_action=-1.0, max_action=1.0
+                )
+        return _env_instance
 
     return env_factory
 
@@ -45,6 +53,7 @@ def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000
 def train_rltools_sac(
     max_steps: int = 100_000,
     seed: int = 7,
+    gamma: float = 0.97,
     corner_name: str = "cone_1",
     max_episode_steps: int = 1_000,
     header_save_path: str = "./models/optimal_pilot_sac_checkpoint.h",
@@ -88,6 +97,7 @@ def train_rltools_sac(
                 "algorithm": "RLtools-SAC",
                 "max_steps": max_steps,
                 "seed": seed,
+                "gamma": gamma,
                 "corner_name": corner_name,
                 "max_episode_steps": max_episode_steps,
             }
@@ -101,8 +111,17 @@ def train_rltools_sac(
     print(f"[RLtools-SAC] Creando fábrica de entorno (esquina: {corner_name})...")
     env_factory = make_env_factory(corner_name=corner_name, max_episode_steps=max_episode_steps)
 
-    print(f"[RLtools-SAC] Inicializando algoritmo SAC con semilla {seed}...")
-    sac = SAC(env_factory)
+    print(f"[RLtools-SAC] Inicializando algoritmo SAC con semilla {seed} y gamma {gamma}...")
+    eval_interval = min(1_000, max(1, max_steps // 10))
+    sac = SAC(
+        env_factory,
+        STEP_LIMIT=max_steps,
+        EPISODE_STEP_LIMIT=max_episode_steps,
+        GAMMA=gamma,
+        evaluation_interval=eval_interval,
+        num_evaluation_episodes=5,
+        verbose=verbose,
+    )
     state = sac.State(seed)
 
     print(f"[RLtools-SAC] Iniciando bucle de entrenamiento (hasta {max_steps} pasos)...")
@@ -151,6 +170,9 @@ def parse_args():
     )
     parser.add_argument("--seed", type=int, default=7, help="Semilla para reproducibilidad.")
     parser.add_argument(
+        "--gamma", type=float, default=0.97, help="Factor de descuento gamma (por defecto 0.97)."
+    )
+    parser.add_argument(
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo en Webots."
     )
     parser.add_argument(
@@ -174,6 +196,7 @@ if __name__ == "__main__":
         max_steps=args.steps,
         max_episode_steps=args.max_episode_steps,
         seed=args.seed,
+        gamma=args.gamma,
         corner_name=args.corner,
         header_save_path=args.export_path,
         log_dir=args.log_dir,

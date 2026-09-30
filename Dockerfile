@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libglx-mesa0 \
     libxcb-cursor0 \
+    libblas-dev \
     locales \
     xvfb \
     && rm -rf /var/lib/apt/lists/*

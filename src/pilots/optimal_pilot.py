@@ -90,11 +90,16 @@ class OptimalPilot(BasePilot):
                 )
 
         elif self.backend == "rltools_sac":
-            # Soporte para modelos de RLtools
+            # Soporte para modelos y checkpoints de RLtools (.h exportados)
             try:
                 import rltools
-                # Si RLtools expone función de carga directa en su wrapper
-                if hasattr(rltools, "load"):
+                if (
+                    hasattr(rltools, "load_checkpoint_from_path")
+                    and self.checkpoint_path is not None
+                    and self.checkpoint_path.endswith((".h", ".hpp", ".c"))
+                ):
+                    self._model = rltools.load_checkpoint_from_path(self.checkpoint_path)
+                elif hasattr(rltools, "load"):
                     self._model = rltools.load(self.checkpoint_path)
                 else:
                     self._model = self.checkpoint_path
@@ -132,7 +137,11 @@ class OptimalPilot(BasePilot):
         elif self.backend == "rltools_sac":
             if self._model is None:
                 raise RuntimeError("El modelo RLtools-SAC no ha sido cargado.")
-            if hasattr(self._model, "predict"):
+            if hasattr(self._model, "evaluate"):
+                raw_act = self._model.evaluate(obs)
+            elif hasattr(self._model, "action"):
+                raw_act = self._model.action(obs)
+            elif hasattr(self._model, "predict"):
                 raw_act, _ = self._model.predict(obs, deterministic=self.deterministic)
             elif callable(self._model):
                 raw_act = self._model(obs)
