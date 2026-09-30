@@ -135,16 +135,37 @@ python src/evaluation/metrics.py \
   --save-csv logs/eval_laggy_p025.csv
 ```
 
+### E. Evaluar el Piloto Asistido (AssistedPilot con Copiloto Residual)
+
+Evalúa la composición aditiva $a = \text{clip}(a_h + a_r, -1, 1)$ aplicando el copiloto entrenado sobre un piloto degradado o con retardo:
+
+```bash
+python src/evaluation/metrics.py \
+  --pilot-type assisted \
+  --base-pilot-type noisy \
+  --checkpoint models/ppo_optimal_pilot.zip \
+  --sigma 0.20 \
+  --copilot-checkpoint models/copilot_residual_ppo_noisy.zip \
+  --residual-scale 1.0 \
+  --episodes 20 \
+  --corner cone_1 \
+  --save-csv logs/eval_assisted_noisy.csv
+```
+
 ---
 
 ## 4. Opciones y parámetros de línea de comandos
 
 | Argumento | Tipo | Por defecto | Descripción |
 |---|---|---|---|
-| `--pilot-type` | `str` | `optimal` | Tipo de piloto: `optimal`, `heuristic`, `noisy`, `laggy`. |
+| `--pilot-type` | `str` | `optimal` | Tipo de piloto: `optimal`, `heuristic`, `noisy`, `laggy`, `assisted`. |
 | `--checkpoint` | `str` | `models/ppo_optimal_pilot.zip` | Ruta al archivo del modelo entrenado (`.zip` o `.h`). |
 | `--backend` | `str` | `sb3_ppo` | Backend para OptimalPilot: `sb3_ppo`, `rltools_sac`, `dummy`. |
 | `--heuristic-mode` | `str` | `proportional` | Modalidad heurística: `proportional` u `open_loop`. |
+| `--base-pilot-type` | `str` | `noisy` | Piloto base asistido si `pilot-type=assisted` (`noisy`, `laggy`, `optimal`). |
+| `--copilot-checkpoint` | `str` | `None` | Ruta al modelo del copiloto residual (`.zip` o `.h`). |
+| `--copilot-backend` | `str` | `auto` | Backend del copiloto (`auto`, `sb3_ppo`, `sb3_sac`, `rltools_sac`, `dummy`). |
+| `--residual-scale` | `float` | `1.0` | Factor de escala para limitar la intervención residual $a_r$. |
 | `--episodes` | `int` | `10` | Cantidad de episodios a evaluar. |
 | `--corner` | `str` | `cone_1` | Cono objetivo en Webots (`cone_1`, `cone_2`, `cone_3`, `cone_4`). |
 | `--max-episode-steps`| `int` | `1000` | Límite máximo de pasos por episodio antes de truncar. |
@@ -191,3 +212,35 @@ import pandas as pd
 df = pd.read_csv("logs/eval_ppo_optimal.csv")
 print(f"Success rate: {df['success'].mean() * 100:.1f}%")
 ```
+
+---
+
+## 6. Comparación y generación de reportes cuantitativos (`compare_pilots.py`)
+
+Para agregar y comparar sistemáticamente los resultados de múltiples pilotos (por ejemplo, contrastar un piloto no asistido frente a su versión con copiloto residual):
+
+```bash
+docker exec -it webots_rltools_env bash
+python src/evaluation/compare_pilots.py \
+  --csv-files \
+    logs/eval_heuristic.csv \
+    logs/eval_ppo_optimal.csv \
+    logs/eval_noisy_sigma015.csv \
+    logs/eval_assisted_noisy.csv \
+  --labels \
+    "Heurístico" \
+    "Óptimo PPO" \
+    "Noisy (solo)" \
+    "Noisy + Copiloto" \
+  --output-dir logs/
+```
+
+### Artefactos generados:
+1. **Tabla CSV agregada (`logs/pilots_comparison_summary.csv`):** Tasa de éxito, tasa de colisión, duración y distancias.
+2. **Tabla Markdown (`logs/pilots_comparison_summary.md`):** Formateada para inclusión directa en reportes y tesis.
+3. **Gráficos PNG (`logs/pilots_success_vs_collision.png` y `logs/pilots_rewards_and_lengths.png`):** Figuras en alta resolución listas para publicación.
+
+### 7. Análisis interactivo en Jupyter Notebook
+
+Para explorar trayectorias espaciales 2D/3D en la habitación de $2 \times 2\text{ m}$ y curvas de activación del residual, abre el notebook:
+`notebooks/01_pilots_and_copilot_analysis.ipynb`

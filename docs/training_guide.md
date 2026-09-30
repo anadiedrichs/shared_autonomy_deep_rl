@@ -58,6 +58,29 @@ python src/training/train_rltools_sac.py \
 * **Compilación C++ en caliente:** RLtools compila automáticamente la interfaz C++ con `g++` y `BLAS`.
 * **Exportación a C:** Al finalizar los pasos, exporta la política entrenada directamente como un archivo header C (`models/optimal_pilot_sac_checkpoint.h`), listo para inferencia embebida ultra liviana en el microcontrolador del Crazyflie.
 
+### Opción C: Entrenamiento del Copiloto Residual (Autonomía Compartida)
+
+Entrena la política residual $\pi_r(s, a_h)$ manteniendo congelado a un piloto humano o sintético degradado (`noisy` o `laggy`), optimizando la recompensa de seguridad *goal-agnostic* (Schaff & Walter, 2020):
+
+```bash
+docker exec -it webots_rltools_env bash
+python src/training/train_residual_copilot.py \
+  --algorithm ppo \
+  --pilot-type noisy \
+  --noise-std 0.20 \
+  --timesteps 100000 \
+  --lambda-intervention 0.10 \
+  --residual-scale 1.0 \
+  --save-path models/copilot_residual_ppo_noisy.zip \
+  --tensorboard-log logs/copilot
+```
+
+* **Parámetros clave:**
+  - `--algorithm`: Algoritmo de RL (`ppo` o `sac`).
+  - `--pilot-type`: Piloto congelado a asistir (`noisy`, `laggy`, `heuristic`, `optimal`).
+  - `--lambda-intervention`: Penalización por magnitud $\|a_r\|^2$ (por defecto `0.10`); cuanto mayor es, más se restringe la intervención del copiloto.
+  - `--residual-scale`: Factor de atenuación para limitar la autoridad del copiloto sobre los mandos del piloto (en $(0, 1]$).
+
 ---
 
 ## 4. Cómo controlar la visualización dentro de Webots
@@ -97,7 +120,10 @@ tensorboard --logdir ./logs/ppo
 # Para monitorear SAC (RLtools):
 tensorboard --logdir ./logs/sac
 
-# O para comparar ambos a la vez:
+# Para monitorear el Copiloto Residual:
+tensorboard --logdir ./logs/copilot
+
+# O para comparar todos los entrenamientos a la vez:
 tensorboard --logdir ./logs
 ```
 

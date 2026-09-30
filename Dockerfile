@@ -45,7 +45,7 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # 4. Install Python packages for reinforcement learning
 RUN pip install --upgrade pip && \
-    pip install numpy pybind11 h5py tensorboard rltools gymnasium stable-baselines3 pandas rich tqdm
+    pip install numpy pybind11 h5py tensorboard rltools gymnasium stable-baselines3 pandas rich tqdm matplotlib seaborn
 
 # Working directory setup
 WORKDIR /workspace
