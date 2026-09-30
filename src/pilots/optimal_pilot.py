@@ -9,8 +9,10 @@ Permite cargar y ejecutar políticas entrenadas con diferentes backends
 import os
 import numpy as np
 
+from src.pilots.base_pilot import BasePilot
 
-class OptimalPilot:
+
+class OptimalPilot(BasePilot):
     """
     Interfaz unificada para el piloto óptimo, abstrayendo el framework de entrenamiento.
     """

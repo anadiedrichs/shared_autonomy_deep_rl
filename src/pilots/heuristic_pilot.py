@@ -16,8 +16,10 @@ Permite operar en dos enfoques principales según el parámetro 'mode':
 from math import cos, sin, sqrt
 import numpy as np
 
+from src.pilots.base_pilot import BasePilot
 
-class HeuristicPilot:
+
+class HeuristicPilot(BasePilot):
     """
     Piloto heurístico determinista con múltiples modalidades de control.
     """

@@ -8,8 +8,10 @@ sumando una perturbación gaussiana N(0, sigma^2) a la política del piloto ópt
 
 import numpy as np
 
+from src.pilots.base_pilot import BasePilot
 
-class NoisyPilot:
+
+class NoisyPilot(BasePilot):
     """
     Piloto sintético que perturba las acciones continuas del piloto óptimo con ruido gaussiano.
     """

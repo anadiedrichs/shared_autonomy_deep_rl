@@ -159,7 +159,54 @@ def test_optimal_pilot_relative_path_resolution():
         pass
 
 
+def test_base_pilot_inheritance_and_interface():
+    """Valida que todos los pilotos hereden de BasePilot y cumplan su contrato común."""
+    from src.pilots.base_pilot import BasePilot, Pilot
+    from src.pilots.heuristic_pilot import HeuristicPilot
+    from src.pilots.laggy_pilot import LaggyPilot
+    from src.pilots.noisy_pilot import NoisyPilot
+    from src.pilots.optimal_pilot import OptimalPilot
+
+    assert Pilot is BasePilot
+
+    # 1. No se puede instanciar BasePilot directamente sin implementar get_action
+    try:
+        class IncompletePilot(BasePilot):
+            pass
+        IncompletePilot()
+        assert False, "Debería fallar instanciación de clase abstracta"
+    except TypeError:
+        pass
+
+    # 2. Instancias de pilotos heredan de BasePilot
+    heuristic = HeuristicPilot(mode="open_loop")
+    optimal = OptimalPilot(backend="dummy")
+    noisy = NoisyPilot(optimal_pilot=heuristic, sigma=0.0)
+    laggy = LaggyPilot(optimal_pilot=heuristic, p_repeat=0.0)
+
+    for p in (heuristic, optimal, noisy, laggy):
+        assert isinstance(p, BasePilot)
+        assert isinstance(p, Pilot)
+
+        obs = np.zeros(11, dtype=np.float32)
+        act = p.get_action(obs)
+        assert act.shape == (4,)
+
+        # Validar llamada directa __call__
+        act_call = p(obs)
+        assert np.allclose(act, act_call)
+
+        # Validar contrato choose_action
+        act_choose, aux = p.choose_action(obs)
+        assert np.allclose(act, act_choose)
+        assert aux == []
+
+        # Validar reset
+        p.reset()
+
+
 if __name__ == "__main__":
+    test_base_pilot_inheritance_and_interface()
     test_noisy_pilot_zero_noise()
     test_noisy_pilot_with_noise_and_clipping()
     test_laggy_pilot_always_repeat()

@@ -8,8 +8,10 @@ paso anterior con una probabilidad 'p_repeat' (parámetro alpha de la tesis).
 
 import numpy as np
 
+from src.pilots.base_pilot import BasePilot
 
-class LaggyPilot:
+
+class LaggyPilot(BasePilot):
     """
     Piloto sintético que introduce dependencia temporal al repetir ocasionalmente la acción previa.
     """
