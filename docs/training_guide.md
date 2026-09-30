@@ -25,35 +25,80 @@ Ya tener configurado el entorno acorde como menciona la guía docker_guide.md de
                                                                                                                                                                                                            
 > Se abrirá la ventana gráfica de Webots. Como el Crazyflie tiene configurado el controlador en modo <extern>, el simulador quedará a la espera de que el script de entrenamiento se conecte.                                            
 
-## 3. Terminal 2: Lanzar el entrenamiento de prueba con PPO                                                                                                                                                                             
-  
-  Abre una segunda terminal en tu máquina, entra al contenedor y ejecuta train_sb3_ppo.py:
-  
-    docker exec -it webots_rltools_env bash
-    python src/training/train_sb3_ppo.py --timesteps 20000 --max-episode-steps 1000 --corner cone_1
-  
-  Puedes ajustar --timesteps (por ejemplo, 20000 para una prueba rápida de pocos minutos, o 50000 / 100000 para un entrenamiento completo).
+## 3. Terminal 2: Lanzar el entrenamiento
+
+Elige entre entrenar con **PPO (Stable-Baselines3)** o con **SAC (RLtools en C++)**:
+
+### Opción A: Entrenamiento con PPO (Stable-Baselines3)
+
+Abre una segunda terminal en tu máquina, entra al contenedor y ejecuta `train_sb3_ppo.py`:
+
+```bash
+docker exec -it webots_rltools_env bash
+python src/training/train_sb3_ppo.py --timesteps 100000 --max-episode-steps 1000 --corner cone_1
+```
+
+* Guarda el modelo en `models/ppo_optimal_pilot.zip` y genera logs en `logs/ppo`.
+* Puedes ajustar `--timesteps` (ej. `20000` para una prueba rápida o `100000` para convergencia).
+
+### Opción B: Entrenamiento con SAC (RLtools) y exportación a Header C
+
+Ejecuta el algoritmo Soft Actor-Critic implementado en C++ mediante RLtools:
+
+```bash
+docker exec -it webots_rltools_env bash
+python src/training/train_rltools_sac.py \
+  --steps 100000 \
+  --max-episode-steps 1000 \
+  --corner cone_1 \
+  --export-path models/optimal_pilot_sac_checkpoint.h \
+  --log-dir logs/sac
+```
+
+* **Compilación C++ en caliente:** RLtools compila automáticamente la interfaz C++ con `g++` y `BLAS`.
+* **Exportación a C:** Al finalizar los pasos, exporta la política entrenada directamente como un archivo header C (`models/optimal_pilot_sac_checkpoint.h`), listo para inferencia embebida ultra liviana en el microcontrolador del Crazyflie.
+
+---
 
 ## 4. Cómo controlar la visualización dentro de Webots
-  
+
 Una vez que el script se conecte, la simulación arrancará automáticamente:
-  
-* Velocidad de simulación (barra superior de Webots):
-  - Play (Tiempo real): Te permite observar la física del cuadricóptero, la inclinación (pitch/roll) y la altitud a velocidad natural.
-  - Fast / Run: Acelera la simulación computacional al máximo de tu CPU/GPU. Verás al dron moverse en cámara rápida de un intento a otro, lo que permite entrenar más rápido mientras sigues viendo la animación 3D.
-* Qué esperar en los episodios:
-  - En cada reset el dron despegará y se estabilizará en el centro.
+
+* **Velocidad de simulación (barra superior de Webots):**
+  - **Play (Tiempo real):** Te permite observar la física del cuadricóptero, la inclinación (pitch/roll) y la altitud a velocidad natural.
+  - **Fast / Run:** Acelera la simulación computacional al máximo de tu CPU/GPU. Verás al dron moverse en cámara rápida de un intento a otro, lo que permite entrenar más rápido mientras sigues viendo la animación 3D.
+* **Qué esperar en los episodios:**
+  - En cada reset el dron despegará y se estabilizará a 0.50 m.
   - En los primeros episodios explorará con movimientos más ruidosos; si choca contra las paredes o cae, el episodio se reiniciará inmediatamente.
-  - Tras varios miles de pasos, comenzarás a notar trayectorias consistentes orientadas hacia cone_1 (+0.9, +0.9, esquina superior derecha).
-  
- ## 5. (Opcional) Ver las métricas en TensorBoard
-  
-  Si deseas monitorear las curvas de recompensa (rollout/ep_rew_mean), longitud de episodios y pérdidas del algoritmo en tu navegador:
-  
-  Se puede ejecutar directamente en tu máquina host o en otra terminal de Docker:
-  
-  ```
-  tensorboard --logdir ./logs/ppo
-  ```
-  
-  Luego abrir en el navegador: http://localhost:6006
+  - Conforme avanza el entrenamiento, consolidará trayectorias directas hacia `cone_1` (+0.9, +0.9).
+
+---
+
+## 5. Entrenamiento rápido en modo sin interfaz gráfica (Headless)
+
+Si prefieres entrenar a máxima velocidad computacional sin gastar ciclos de GPU ni dibujar ventanas 3D:
+
+```bash
+docker exec -it webots_rltools_env bash
+xvfb-run -a webots --batch --mode=fast --no-rendering webots_project/worlds/crazyflie.wbt
+```
+Y en la Terminal 2 ejecutas el script de entrenamiento elegido (PPO o SAC).
+
+---
+
+## 6. (Opcional) Ver las métricas en TensorBoard
+
+Para monitorear curvas de recompensa, longitud de episodios y pérdidas del algoritmo en tu navegador:
+
+```bash
+# Para monitorear PPO:
+tensorboard --logdir ./logs/ppo
+
+# Para monitorear SAC (RLtools):
+tensorboard --logdir ./logs/sac
+
+# O para comparar ambos a la vez:
+tensorboard --logdir ./logs
+```
+
+Luego abre en el navegador: [http://localhost:6006](http://localhost:6006)
