@@ -4,6 +4,13 @@ Tests unitarios para DroneRobotSupervisor y utilidades del entorno.
 """
 
 import os
+import sys
+
+# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 os.environ["WEBOTS_MOCK"] = "1"
 import numpy as np
 try:
