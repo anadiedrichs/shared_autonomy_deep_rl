@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para la clase SharedAutonomyEnv (Fase 4: Autonomía Compartida).
+Unit tests for the SharedAutonomyEnv class (Phase 4: Shared Autonomy).
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -20,7 +20,7 @@ from src.pilots.base_pilot import BasePilot
 
 
 class ConstantPilot(BasePilot):
-    """Piloto que devuelve una acción constante para pruebas."""
+    """Pilot that returns a constant action for testing."""
 
     def __init__(self, action: np.ndarray):
         self.action = np.asarray(action, dtype=np.float32)
@@ -34,23 +34,23 @@ class ConstantPilot(BasePilot):
 
 
 def test_shared_autonomy_env_spaces():
-    """Valida los espacios de observación y acción en SharedAutonomyEnv."""
+    """Validate observation and action spaces in SharedAutonomyEnv."""
     pilot = ConstantPilot(np.array([0.5, 0.0, 0.0, 0.2], dtype=np.float32))
 
-    # Con observación extendida (por defecto: 11 obs dron + 4 acción piloto = 15)
+    # With extended observation (default: 11 drone obs + 4 pilot action = 15)
     env = SharedAutonomyEnv(pilot=pilot, include_pilot_action_in_obs=True, verbose=0)
     assert env.observation_space.shape == (15,)
     assert env.observation_space.dtype == np.float32
     assert env.action_space.shape == (4,)
     assert env.action_space.dtype == np.float32
 
-    # Con observación estándar (solo 11 de dron)
+    # With standard observation (11 drone dimensions only)
     env_simple = SharedAutonomyEnv(pilot=pilot, include_pilot_action_in_obs=False, verbose=0)
     assert env_simple.observation_space.shape == (11,)
 
 
 def test_shared_autonomy_env_reset():
-    """Valida que reset() inicialice las variables y devuelva la observación extendida."""
+    """Validate that reset() initializes variables and returns the extended observation."""
     pilot = ConstantPilot(np.array([0.4, -0.3, 0.1, 0.0], dtype=np.float32))
     env = SharedAutonomyEnv(pilot=pilot, include_pilot_action_in_obs=True, verbose=0)
 
@@ -58,7 +58,7 @@ def test_shared_autonomy_env_reset():
 
     assert isinstance(obs, np.ndarray)
     assert obs.shape == (15,)
-    # Los últimos 4 elementos deben coincidir con la acción inicial del piloto
+    # The last 4 elements must match the pilot's initial action
     assert np.allclose(obs[11:15], pilot.action)
     assert pilot.reset_count == 1
     assert "pilot_action" in info
@@ -67,7 +67,7 @@ def test_shared_autonomy_env_reset():
 
 
 def test_shared_autonomy_env_step_training_mode():
-    """Valida step(action=a_r) donde el algoritmo de RL suministra la acción residual."""
+    """Validate step(action=a_r) where the RL algorithm supplies the residual action."""
     pilot_act = np.array([0.6, -0.4, 0.0, 0.2], dtype=np.float32)
     pilot = ConstantPilot(pilot_act)
     env = SharedAutonomyEnv(
@@ -80,7 +80,7 @@ def test_shared_autonomy_env_step_training_mode():
     )
     env.reset(seed=42)
 
-    # El agente RL propone una corrección residual a_r
+    # The RL agent proposes a residual correction a_r
     residual_action = np.array([-0.2, 0.1, 0.0, -0.1], dtype=np.float32)
     next_obs, reward, terminated, truncated, info = env.step(residual_action)
 
@@ -89,7 +89,7 @@ def test_shared_autonomy_env_step_training_mode():
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
 
-    # Composición esperada: pilot_act + residual_action
+    # Expected composition: pilot_act + residual_action
     expected_composed = pilot_act + residual_action
     assert np.allclose(info["composed_action"], expected_composed)
     assert np.allclose(info["residual_action"], residual_action)
@@ -97,7 +97,7 @@ def test_shared_autonomy_env_step_training_mode():
 
 
 def test_shared_autonomy_env_step_with_copilot_instance():
-    """Valida step(action=None) cuando se provee un objeto copilot (modo inferencia/evaluación)."""
+    """Validate step(action=None) when a copilot object is provided (inference/evaluation mode)."""
     pilot_act = np.array([0.5, 0.5, 0.0, 0.0], dtype=np.float32)
     pilot = ConstantPilot(pilot_act)
 
@@ -108,7 +108,7 @@ def test_shared_autonomy_env_step_with_copilot_instance():
     env = SharedAutonomyEnv(pilot=pilot, copilot=copilot, verbose=0)
     env.reset(seed=42)
 
-    # step sin argumentos
+    # step without arguments
     next_obs, reward, terminated, truncated, info = env.step()
 
     expected_composed = np.array([0.2, 0.2, 0.0, 0.0], dtype=np.float32)
@@ -116,7 +116,7 @@ def test_shared_autonomy_env_step_with_copilot_instance():
 
 
 def test_shared_autonomy_env_action_saturation():
-    """Valida que la composición de acciones se recorte rígidamente a [-1.0, 1.0]."""
+    """Validate that action composition is strictly clipped to [-1.0, 1.0]."""
     pilot_act = np.array([0.9, -0.9, 0.5, -0.5], dtype=np.float32)
     pilot = ConstantPilot(pilot_act)
     env = SharedAutonomyEnv(pilot=pilot, verbose=0)
@@ -130,7 +130,7 @@ def test_shared_autonomy_env_action_saturation():
 
 
 def test_shared_autonomy_env_reward_modes():
-    """Valida los modos de recompensa 'safety', 'goal_directed' y 'combined'."""
+    """Validate the 'safety', 'goal_directed', and 'combined' reward modes."""
     pilot = ConstantPilot(np.zeros(4, dtype=np.float32))
 
     for mode in ("safety", "goal_directed", "combined"):

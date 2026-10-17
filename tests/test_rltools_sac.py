@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para la integración de RLtools SAC y exportación de C Header.
+Unit tests for RLtools SAC integration and C Header export.
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import tempfile
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -20,7 +20,7 @@ from src.pilots.optimal_pilot import OptimalPilot
 
 
 def test_make_env_factory_singleton():
-    """Valida que la fábrica de entorno devuelva una instancia persistente (singleton)."""
+    """Validate that the environment factory returns a persistent instance (singleton)."""
     factory = make_env_factory(corner_name="cone_1", max_episode_steps=500)
     env1 = factory()
     env2 = factory()
@@ -31,7 +31,7 @@ def test_make_env_factory_singleton():
 
 
 def test_rltools_sac_workflow_mock():
-    """Valida el ciclo de entrenamiento e inferencia de RLtools SAC con exportación a C header."""
+    """Validate the RLtools SAC training and inference workflow with C header export."""
     try:
         import rltools
     except ImportError:
@@ -40,7 +40,7 @@ def test_rltools_sac_workflow_mock():
 
     factory = make_env_factory(corner_name="cone_1", max_episode_steps=500)
 
-    # 1. Instanciar SAC con límite pequeño para test unitario rápido
+    # 1. Instantiate SAC with a small limit for a fast unit test
     sac = rltools.SAC(
         factory,
         STEP_LIMIT=1000,
@@ -52,17 +52,17 @@ def test_rltools_sac_workflow_mock():
     )
     state = sac.State(42)
 
-    # 2. Ejecutar un paso de entrenamiento
+    # 2. Execute one training step
     finished = state.step()
     assert isinstance(finished, bool)
 
-    # 3. Validar exportación de política C
+    # 3. Validate C policy export
     c_header = state.export_policy()
     assert isinstance(c_header, str)
     assert len(c_header) > 100
     assert "namespace" in c_header or "struct" in c_header or "rl_tools" in c_header
 
-    # 4. Validar carga e inferencia mediante OptimalPilot
+    # 4. Validate loading and inference via OptimalPilot
     with tempfile.NamedTemporaryFile(suffix=".h", mode="w", delete=False) as f:
         f.write(c_header)
         temp_header_path = f.name

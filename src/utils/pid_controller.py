@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Controlador PID para Crazyflie con control de velocidad y altitud fija.
+PID controller for the Crazyflie with velocity and fixed altitude control.
 
-Adaptado del controlador en C de Bitcraze AB para Crazyflie en Webots.
+Adapted from the Bitcraze AB C controller for the Crazyflie in Webots.
 """
 
 import numpy as np
@@ -10,17 +10,17 @@ import numpy as np
 
 class pid_velocity_fixed_height_controller:
     """
-    Controlador PID de velocidad horizontal y mantenimiento de altitud fija para Crazyflie.
+    Horizontal velocity and fixed altitude hold PID controller for the Crazyflie.
     """
 
     def __init__(self):
-        # Errores en pasos de tiempo previos
+        # Errors from previous time steps
         self.past_vx_error = 0.0
         self.past_vy_error = 0.0
         self.past_alt_error = 0.0
         self.past_pitch_error = 0.0
         self.past_roll_error = 0.0
-        # Integrador de error de altitud
+        # Altitude error integrator
         self.altitude_integrator = 0.0
         self.last_time = 0.0
 
@@ -39,25 +39,25 @@ class pid_velocity_fixed_height_controller:
         actual_vy: float,
     ) -> list[float]:
         """
-        Calcula las potencias individuales de los 4 motores para alcanzar las velocidades y altitud deseadas.
+        Computes individual motor power commands for all 4 motors to achieve the desired velocities and altitude.
 
         Args:
-            dt: Paso de tiempo de simulación transcurrido (en segundos).
-            desired_vx: Velocidad lineal deseada en eje X (adelante/atrás en m/s).
-            desired_vy: Velocidad lineal deseada en eje Y (lateral en m/s).
-            desired_yaw_rate: Tasa de giro deseada en yaw (rad/s).
-            desired_altitude: Altitud objetivo deseada (metros).
-            actual_roll: Ángulo actual de roll (radianes).
-            actual_pitch: Ángulo actual de pitch (radianes).
-            actual_yaw_rate: Velocidad angular actual en yaw (rad/s).
-            actual_altitude: Altitud actual medida (metros).
-            actual_vx: Velocidad lineal actual medida en eje X (m/s).
-            actual_vy: Velocidad lineal actual medida en eje Y (m/s).
+            dt: Elapsed simulation time step (in seconds).
+            desired_vx: Desired linear velocity along the X axis (forward/backward in m/s).
+            desired_vy: Desired linear velocity along the Y axis (lateral in m/s).
+            desired_yaw_rate: Desired yaw rate (rad/s).
+            desired_altitude: Desired target altitude (meters).
+            actual_roll: Current roll angle (radians).
+            actual_pitch: Current pitch angle (radians).
+            actual_yaw_rate: Current angular velocity in yaw (rad/s).
+            actual_altitude: Current measured altitude (meters).
+            actual_vx: Current measured linear velocity along the X axis (m/s).
+            actual_vy: Current measured linear velocity along the Y axis (m/s).
 
         Returns:
-            list[float]: Lista de 4 valores de comando de potencia [m1, m2, m3, m4] en el rango [0, 600].
+            list[float]: List of 4 motor power command values [m1, m2, m3, m4] in the range [0, 600].
         """
-        # Ganancias del controlador PID (idénticas a la configuración validada en C de Webots / tesis 2025)
+        # PID controller gains (identical to the validated Webots C configuration / 2025 thesis)
         gains = {
             "kp_att_y": 1.0,
             "kd_att_y": 0.5,
@@ -70,7 +70,7 @@ class pid_velocity_fixed_height_controller:
             "kd_z": 5.0,
         }
 
-        # 1. Control de velocidad horizontal (genera ángulos de inclinación deseados: pitch y roll)
+        # 1. Horizontal velocity control (generates desired tilt angles: pitch and roll)
         vx_error = desired_vx - actual_vx
         vx_deriv = (vx_error - self.past_vx_error) / dt
         vy_error = desired_vy - actual_vy
@@ -81,7 +81,7 @@ class pid_velocity_fixed_height_controller:
         self.past_vx_error = vx_error
         self.past_vy_error = vy_error
 
-        # 2. Control de altitud (PID con término integral acotado y offset base de empuje de 48)
+        # 2. Altitude control (PID with bounded integral term and base thrust offset of 48)
         alt_error = desired_altitude - actual_altitude
         alt_deriv = (alt_error - self.past_alt_error) / dt
         self.altitude_integrator += alt_error * dt
@@ -93,7 +93,7 @@ class pid_velocity_fixed_height_controller:
         )
         self.past_alt_error = alt_error
 
-        # 3. Control de actitud (orientación roll, pitch y velocidad de guiñada yaw)
+        # 3. Attitude control (roll, pitch orientation and yaw angular velocity)
         pitch_error = desired_pitch - actual_pitch
         pitch_deriv = (pitch_error - self.past_pitch_error) / dt
         roll_error = desired_roll - actual_roll
@@ -107,13 +107,13 @@ class pid_velocity_fixed_height_controller:
         self.past_pitch_error = pitch_error
         self.past_roll_error = roll_error
 
-        # 4. Mezclado de motores (motor mixing)
+        # 4. Motor mixing
         m1 = alt_command - roll_command + pitch_command + yaw_command
         m2 = alt_command - roll_command - pitch_command - yaw_command
         m3 = alt_command + roll_command - pitch_command + yaw_command
         m4 = alt_command + roll_command + pitch_command - yaw_command
 
-        # Limitar la salida de comando a los actuadores [0, 600]
+        # Clamp actuator command output to [0, 600]
         m1 = float(np.clip(m1, 0.0, 600.0))
         m2 = float(np.clip(m2, 0.0, 600.0))
         m3 = float(np.clip(m3, 0.0, 600.0))

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Piloto sintético con retardo de reacción (LaggyPilot).
+Synthetic pilot with reaction delay (LaggyPilot).
 
-Simula el tiempo de respuesta o retardo humano repitiendo la acción ejecutada en el
-paso anterior con una probabilidad 'p_repeat' (parámetro alpha de la tesis).
+Simulates human response time or latency by repeating the action executed in the
+previous step with probability 'p_repeat' (alpha parameter from the thesis).
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ from src.pilots.base_pilot import BasePilot
 
 class LaggyPilot(BasePilot):
     """
-    Piloto sintético que introduce dependencia temporal al repetir ocasionalmente la acción previa.
+    Synthetic pilot that introduces temporal dependency by occasionally repeating the previous action.
     """
 
     def __init__(
@@ -23,12 +23,12 @@ class LaggyPilot(BasePilot):
         seed: int | None = None,
     ):
         """
-        Inicializa el LaggyPilot.
+        Initializes the LaggyPilot.
 
         Args:
-            optimal_pilot: Instancia del piloto base u óptimo.
-            p_repeat: Probabilidad de repetir la última acción continua (entre 0.0 y 1.0).
-            seed: Semilla para el generador de números aleatorios independiente.
+            optimal_pilot: Instance of the base or optimal pilot.
+            p_repeat: Probability of repeating the last continuous action (between 0.0 and 1.0).
+            seed: Seed for the independent random number generator.
         """
         if not (0.0 <= p_repeat <= 1.0):
             raise ValueError("p_repeat debe ser un valor flotante en el rango [0.0, 1.0].")
@@ -40,13 +40,13 @@ class LaggyPilot(BasePilot):
 
     def reset(self):
         """
-        Reinicia la memoria del piloto (olvida la última acción registrada).
+        Resets the pilot's memory (forgets the last recorded action).
         """
         self.last_action = None
 
     def _get_base_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Obtiene la acción base propuesta por el piloto óptimo según su interfaz disponible.
+        Retrieves the base action proposed by the optimal pilot according to its available interface.
         """
         if hasattr(self.optimal_pilot, "get_action"):
             act = self.optimal_pilot.get_action(observation)
@@ -62,14 +62,14 @@ class LaggyPilot(BasePilot):
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Devuelve la acción a ejecutar. Si ocurre retardo, repite la acción anterior;
-        de lo contrario, consulta al piloto óptimo y actualiza el historial.
+        Returns the action to execute. If a delay occurs, repeats the previous action;
+        otherwise, queries the optimal pilot and updates the history.
 
         Args:
-            observation: Vector de observaciones del entorno.
+            observation: Environment observation vector.
 
         Returns:
-            np.ndarray: Vector continuo de acción en [-1.0, 1.0].
+            np.ndarray: Continuous action vector in [-1.0, 1.0].
         """
         if self.last_action is not None and (self._rng.random() < self.p_repeat):
             return self.last_action.copy()
@@ -80,9 +80,9 @@ class LaggyPilot(BasePilot):
 
     def choose_action(self, observation: np.ndarray) -> tuple[np.ndarray, list]:
         """
-        Alias compatible con la interfaz histórica de la tesis (Diedrichs, 2025).
+        Compatibility alias for the historical thesis interface (Diedrichs, 2025).
 
         Returns:
-            tuple: (acción seleccionada, lista de estados auxiliares vacía).
+            tuple: (selected action, empty list of auxiliary states).
         """
         return self.get_action(observation), []

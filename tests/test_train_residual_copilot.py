@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para el script de entrenamiento de la política residual (Fase 5).
+Unit tests for the residual policy training script (Phase 5).
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -21,7 +21,7 @@ from src.training.train_residual_copilot import create_base_pilot_for_training
 
 
 def test_create_base_pilot_for_training_heuristic():
-    """Valida la creación de HeuristicPilot como piloto congelado."""
+    """Validate creation of HeuristicPilot as a frozen pilot."""
     pilot = create_base_pilot_for_training(pilot_type="heuristic", corner_name="cone_1")
     assert isinstance(pilot, HeuristicPilot)
     act = pilot.get_action(np.zeros(11, dtype=np.float32))
@@ -29,7 +29,7 @@ def test_create_base_pilot_for_training_heuristic():
 
 
 def test_create_base_pilot_for_training_noisy():
-    """Valida la creación de NoisyPilot envolviendo el piloto base."""
+    """Validate creation of NoisyPilot wrapping the base pilot."""
     pilot = create_base_pilot_for_training(
         pilot_type="noisy",
         corner_name="cone_1",
@@ -41,7 +41,7 @@ def test_create_base_pilot_for_training_noisy():
 
 
 def test_create_base_pilot_for_training_laggy():
-    """Valida la creación de LaggyPilot envolviendo el piloto base."""
+    """Validate creation of LaggyPilot wrapping the base pilot."""
     pilot = create_base_pilot_for_training(
         pilot_type="laggy",
         corner_name="cone_1",
@@ -53,7 +53,7 @@ def test_create_base_pilot_for_training_laggy():
 
 
 def test_smoke_training_step_ppo():
-    """Smoke test: valida que PPO pueda realizar pasos de optimización en SharedAutonomyEnv."""
+    """Smoke test: validate that PPO can perform optimization steps in SharedAutonomyEnv."""
     from stable_baselines3 import PPO
     from src.envs.shared_autonomy_env import SharedAutonomyEnv
 
@@ -69,14 +69,14 @@ def test_smoke_training_step_ppo():
         verbose=0,
     )
 
-    # Entrenar por 32 timesteps para verificar ciclo de gradientes y forward pass
+    # Train for 32 timesteps to verify gradient cycle and forward pass
     model.learn(total_timesteps=32)
     assert model.num_timesteps >= 32
     env.close()
 
 
 def test_smoke_training_step_sac():
-    """Smoke test: valida que SAC pueda realizar pasos de optimización en SharedAutonomyEnv."""
+    """Smoke test: validate that SAC can perform optimization steps in SharedAutonomyEnv."""
     from stable_baselines3 import SAC
     from src.envs.shared_autonomy_env import SharedAutonomyEnv
 
@@ -92,7 +92,7 @@ def test_smoke_training_step_sac():
         verbose=0,
     )
 
-    # Entrenar por 20 timesteps para verificar replay buffer y target update
+    # Train for 20 timesteps to verify replay buffer and target update
     model.learn(total_timesteps=20)
     assert model.num_timesteps >= 20
     env.close()

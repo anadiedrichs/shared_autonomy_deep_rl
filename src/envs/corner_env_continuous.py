@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Entorno continuo del Crazyflie en habitación 2x2m con objetivo en una esquina (CornerEnv).
+Continuous Crazyflie environment in a 2x2m room with a corner goal (CornerEnv).
 
-Port continuo de la clase SimpleCornerEnvRS10 de la tesis (Diedrichs, 2025, drone-deep-rl).
+Continuous port of the SimpleCornerEnvRS10 class from the thesis (Diedrichs, 2025, drone-deep-rl).
 """
 
 from math import sqrt
@@ -14,18 +14,18 @@ from src.rewards.reward_goal_directed import compute_goal_directed_reward
 
 class CornerEnvContinuous(DroneRobotSupervisor):
     """
-    Entorno continuo de navegación hacia un cono objetivo en una esquina en una habitación de 2x2m.
+    Continuous navigation environment toward a target cone in a corner of a 2x2m room.
     """
 
-    # Identificador del objetivo y umbrales del escenario
+    # Target identifier and scenario thresholds
     CORNER_NAME = "cone_1"
-    DISTANCE_THRESHOLD = 0.15  # Distancia euclídea mínima al objetivo (15 cm)
-    MIN_DIST_OBSTACLES = 100  # Distancia mínima a paredes en mm (100 mm = 0.10 m)
-    MIN_EPISODE_SCORE = -1_000.0  # Puntaje mínimo acumulado antes de truncar
-    MAX_EPISODE_SCORE = 1_000.0  # Puntaje máximo acumulado antes de truncar
-    HEIGHT_INITIAL = 0.50  # Altura objetivo tras despegue (metros)
+    DISTANCE_THRESHOLD = 0.15  # Minimum Euclidean distance to the target (15 cm)
+    MIN_DIST_OBSTACLES = 100  # Minimum distance to walls in mm (100 mm = 0.10 m)
+    MIN_EPISODE_SCORE = -1_000.0  # Minimum cumulative score before truncation
+    MAX_EPISODE_SCORE = 1_000.0  # Maximum cumulative score before truncation
+    HEIGHT_INITIAL = 0.50  # Target altitude after take-off (meters)
 
-    # Límites espaciales de la habitación (2x2 metros centrada en [0, 0])
+    # Spatial bounds of the room (2x2 meters centered at [0, 0])
     X_MIN, X_MAX = -1.0, 1.0
     Y_MIN, Y_MAX = -1.0, 1.0
 
@@ -37,13 +37,13 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         verbose: int = 1,
     ):
         """
-        Inicializa el entorno continuo de la habitación con esquinas.
+        Initializes the continuous corner room environment.
 
         Args:
-            max_episode_steps: Número máximo de pasos por episodio (por defecto 1000).
-            corner_name: Identificador DEF del nodo objetivo en el mundo Webots (por defecto "cone_1").
-            enable_trajectory_logging: Si es True, habilita el guardado en disco de la trayectoria CSV.
-            verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
+            max_episode_steps: Maximum number of steps per episode (default 1000).
+            corner_name: DEF identifier of the target node in the Webots world (default "cone_1").
+            enable_trajectory_logging: If True, enables saving the CSV trajectory to disk.
+            verbose: Console detail level (0: silent for massive RL, 1: key transitions and take-off, 2: extended debug).
         """
         self.corner_name = corner_name
         self.target_node = None
@@ -53,7 +53,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         self.x_init = 0.0
         self.y_init = 0.0
 
-        # Posición por defecto del objetivo para pruebas unitarias sin Webots
+        # Default target position for unit testing without Webots
         self._target_pos_fallback = np.array([0.8, 0.8, 0.0], dtype=np.float32)
 
         super().__init__(
@@ -67,14 +67,14 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def _init_targets(self):
         """
-        Obtiene la referencia al nodo del cono objetivo en Webots mediante su identificador DEF.
+        Obtains the reference to the target cone node in Webots via its DEF identifier.
         """
         if hasattr(self, "getFromDef"):
             self.target_node = self.getFromDef(self.corner_name)
 
     def put_drone_in_the_center(self):
         """
-        Posiciona el dron en el centro del escenario (coordenadas [0, 0, z]).
+        Positions the drone at the center of the arena (coordinates [0, 0, z]).
         """
         self.x_init = 0.0
         self.y_init = 0.0
@@ -87,10 +87,10 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def is_out_of_bounds(self) -> bool:
         """
-        Verifica si el dron ha salido de los límites geométricos de la habitación (2x2 metros).
+        Checks whether the drone has left the geometric boundaries of the room (2x2 meters).
 
         Returns:
-            bool: True si el dron cruzó alguna pared, False si permanece dentro del recinto.
+            bool: True if the drone crossed any wall, False if it remains inside the enclosure.
         """
         return (
             self.x_global < self.X_MIN
@@ -101,10 +101,10 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def get_distance_to_target(self) -> float:
         """
-        Calcula la distancia euclídea en el plano horizontal (XY) entre el dron y el objetivo.
+        Computes the horizontal plane (XY) Euclidean distance between the drone and the target.
 
         Returns:
-            float: Distancia en metros al objetivo.
+            float: Distance in meters to the target.
         """
         if self.target_node is not None and hasattr(self.target_node, "getField"):
             target_field = self.target_node.getField("translation")
@@ -114,35 +114,35 @@ class CornerEnvContinuous(DroneRobotSupervisor):
                 dy = self.y_global - target_pos[1]
                 return float(sqrt(dx * dx + dy * dy))
 
-        # Cálculo de respaldo para pruebas unitarias / CI sin Webots
+        # Fallback calculation for unit tests / CI without Webots
         dx = self.x_global - self._target_pos_fallback[0]
         dy = self.y_global - self._target_pos_fallback[1]
         return float(sqrt(dx * dx + dy * dy))
 
     def achieve_goal(self) -> bool:
         """
-        Determina si el dron alcanzó con éxito el cono objetivo manteniéndose en vuelo.
-        Requiere estar a menos de DISTANCE_THRESHOLD (15 cm) y a una altitud mayor a 0.20 metros.
+        Determines whether the drone successfully reached the target cone while airborne.
+        Requires being within DISTANCE_THRESHOLD (15 cm) and at an altitude greater than 0.20 meters.
 
         Returns:
-            bool: True si la meta fue alcanzada válidamente en vuelo.
+            bool: True if the goal was validly reached in flight.
         """
         self.dist_min_target = self.get_distance_to_target()
         return bool(self.dist_min_target <= self.DISTANCE_THRESHOLD and self.alt > 0.20)
 
     def is_done(self) -> bool:
         """
-        Evalúa las condiciones de finalización del episodio:
-        1. Caída al suelo (altitud < 0.10 m)
-        2. Salida de los límites del escenario
-        3. Éxito al alcanzar el cono objetivo en vuelo seguro
-        4. Truncado por límites de puntaje acumulado
-        5. Límite de pasos del episodio excedido
+        Evaluates episode termination conditions:
+        1. Crash to the ground (altitude < 0.10 m)
+        2. Leaving the scenario boundaries
+        3. Success upon reaching the target cone in safe flight
+        4. Truncation due to cumulative score bounds
+        5. Episode step limit exceeded
 
         Returns:
-            bool: True si el episodio ha terminado o debe truncarse.
+            bool: True if the episode has terminated or must be truncated.
         """
-        # 1. Caída del cuadricóptero
+        # 1. Quadrotor crash / fall
         if self.alt < 0.10:
             self.terminated = True
             self.truncated = False
@@ -152,7 +152,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
                 print(f"[CornerEnv] Caída detectada (altitud: {self.alt:.2f}m). Episodio terminado.")
             return True
 
-        # 2. Salida de límites de la habitación
+        # 2. Leaving room boundaries
         if self.is_out_of_bounds():
             self.terminated = True
             self.truncated = False
@@ -165,7 +165,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
                 )
             return True
 
-        # 3. Éxito al llegar al objetivo en altitud adecuada
+        # 3. Success upon reaching the target at an appropriate altitude
         if self.achieve_goal():
             self.terminated = True
             self.truncated = False
@@ -178,7 +178,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
                 )
             return True
 
-        # 4. Truncado por puntuación acumulada extrema
+        # 4. Truncation due to extreme cumulative score
         if (
             self.episode_score <= self.MIN_EPISODE_SCORE
             or self.episode_score >= self.MAX_EPISODE_SCORE
@@ -198,19 +198,19 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def get_reward(self) -> float:
         """
-        Calcula la recompensa del paso actual mediante compute_goal_directed_reward.
+        Computes the reward for the current step via compute_goal_directed_reward.
 
         Returns:
-            float: Recompensa continua no normalizada.
+            float: Unnormalized continuous reward.
         """
         self.dist_min_target = self.get_distance_to_target()
 
-        # Distancia mínima a obstáculos en metros
+        # Minimum distance to obstacles in meters
         d_min = min(
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
         ) / 1000.0
 
-        # Evaluación de eventos terminales
+        # Evaluation of terminal events
         reached = self.achieve_goal()
         collided = bool(
             self.alt < 0.10
@@ -243,7 +243,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """
-        Reinicia el entorno, reposiciona el dron en el centro y reanuda el despegue.
+        Resets the environment, repositions the drone at the center, and resumes take-off.
 
         Returns:
             tuple: (observation, info)
@@ -258,7 +258,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def get_info(self) -> dict:
         """
-        Devuelve el diccionario con información y métricas detalladas del paso actual.
+        Returns the dictionary with detailed information and metrics for the current step.
         """
         info = super().get_info()
         info.update(

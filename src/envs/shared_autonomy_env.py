@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Entorno de autonomía compartida para teleoperación asistida de cuadricópteros Crazyflie.
+Shared autonomy environment for assisted teleoperation of Crazyflie quadrotors.
 
-Compone un piloto (humano o sintético) y un copiloto residual siguiendo la formulación
-de Schaff & Walter (2020):
+Composes a pilot (human or synthetic) and a residual copilot following the formulation
+of Schaff & Walter (2020):
     a = clip(a_h + a_r, -1.0, 1.0)
-    a_h ~ pi_h(s)      # orientado a la meta
-    a_r ~ pi_r(s, a_h) # corrección residual agnóstica a la meta
+    a_h ~ pi_h(s)      # goal-directed
+    a_r ~ pi_r(s, a_h) # goal-agnostic residual correction
 
-Funciona tanto en modo de entrenamiento de la política residual (recibiendo a_r en step())
-como en modo de evaluación/inferencia autónoma (con un copiloto ResidualPolicy provisto).
+Operates both in residual policy training mode (receiving a_r in step())
+and in autonomous evaluation/inference mode (with an injected ResidualPolicy copilot).
 """
 
 import numpy as np
@@ -27,7 +27,7 @@ from src.rewards.reward_general_safety import general_safety_reward
 
 class SharedAutonomyEnv(CornerEnvContinuous):
     """
-    Envuelve CornerEnvContinuous para implementar autonomía compartida continua.
+    Wraps CornerEnvContinuous to implement continuous shared autonomy.
     """
 
     def __init__(
@@ -44,20 +44,20 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         verbose: int = 1,
     ):
         """
-        Inicializa el entorno de autonomía compartida.
+        Initializes the shared autonomy environment.
 
         Args:
-            pilot: Objeto piloto con método get_action(observation, **kwargs) -> np.ndarray(4,).
-            copilot: Objeto copiloto opcional con método get_action(observation, pilot_action) -> np.ndarray(4,).
-            max_episode_steps: Límite máximo de pasos por episodio.
-            corner_name: Nombre del cono objetivo en Webots.
-            reward_mode: Función de recompensa utilizada ("safety", "goal_directed", "combined").
-            lambda_intervention: Coeficiente de penalización por intervención ||a_r||^2.
-            residual_scale: Factor de atenuación para el residual (en (0, 1]).
-            include_pilot_action_in_obs: Si True, el espacio de observación para el copiloto
-                es de 15 dimensiones ([obs_dron(11), acción_piloto(4)]).
-            enable_trajectory_logging: Guardar trayectoria física en disco.
-            verbose: Nivel de detalle en consola.
+            pilot: Pilot object with method get_action(observation, **kwargs) -> np.ndarray(4,).
+            copilot: Optional copilot object with method get_action(observation, pilot_action) -> np.ndarray(4,).
+            max_episode_steps: Maximum step limit per episode.
+            corner_name: Target cone name in Webots.
+            reward_mode: Reward function used ("safety", "goal_directed", "combined").
+            lambda_intervention: Intervention penalty coefficient ||a_r||^2.
+            residual_scale: Attenuation factor for the residual (in (0, 1]).
+            include_pilot_action_in_obs: If True, the observation space for the copilot
+                is 15-dimensional ([drone_obs(11), pilot_action(4)]).
+            enable_trajectory_logging: Save physical trajectory to disk.
+            verbose: Console detail level.
         """
         self.pilot = pilot
         self.copilot = copilot
@@ -66,7 +66,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         self.residual_scale = float(residual_scale)
         self.include_pilot_action_in_obs = bool(include_pilot_action_in_obs)
 
-        # Variables internas de trazabilidad del paso actual
+        # Internal traceability variables for the current step
         self.current_drone_obs = np.zeros(11, dtype=np.float32)
         self.current_pilot_action = np.zeros(4, dtype=np.float32)
         self.current_residual_action = np.zeros(4, dtype=np.float32)
@@ -81,19 +81,19 @@ class SharedAutonomyEnv(CornerEnvContinuous):
             verbose=verbose,
         )
 
-        # Redefinir espacios formales de Gymnasium
+        # Redefine formal Gymnasium spaces
         obs_dim = 15 if self.include_pilot_action_in_obs else 11
         if spaces is not None:
             self.observation_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32
             )
-            # El espacio de acción para el agente RL que aprende el copiloto es el residual a_r
+            # The action space for the RL agent learning the copilot is the residual a_r
             self.action_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(4,), dtype=np.float32
             )
 
     def _get_pilot_action(self, drone_obs: np.ndarray) -> np.ndarray:
-        """Obtiene la acción propuesta por el piloto para la observación física actual."""
+        """Obtains the action proposed by the pilot for the current physical observation."""
         if self.pilot is None:
             return np.zeros(4, dtype=np.float32)
         try:
@@ -105,25 +105,25 @@ class SharedAutonomyEnv(CornerEnvContinuous):
     def _build_copilot_observation(
         self, drone_obs: np.ndarray, pilot_action: np.ndarray
     ) -> np.ndarray:
-        """Construye la observación extendida para el copiloto [obs, a_h]."""
+        """Builds the extended observation for the copilot [obs, a_h]."""
         if self.include_pilot_action_in_obs:
             return np.concatenate([drone_obs, pilot_action], dtype=np.float32)
         return np.asarray(drone_obs, dtype=np.float32)
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """
-        Reinicia el entorno, el piloto y el copiloto, y devuelve la observación inicial para el copiloto.
+        Resets the environment, pilot, and copilot, and returns the initial observation for the copilot.
         """
         drone_obs, info = super().reset(seed=seed, options=options)
         self.current_drone_obs = drone_obs
 
-        # Reiniciar estados internos de pilotos si implementan memoria
+        # Reset internal pilot states if they implement memory
         if hasattr(self.pilot, "reset"):
             self.pilot.reset()
         if self.copilot is not None and hasattr(self.copilot, "reset"):
             self.copilot.reset()
 
-        # Computar acción inicial del piloto
+        # Compute initial pilot action
         self.current_pilot_action = self._get_pilot_action(drone_obs)
         self.current_residual_action = np.zeros(4, dtype=np.float32)
         self.current_composed_action = np.clip(self.current_pilot_action, -1.0, 1.0)
@@ -136,11 +136,11 @@ class SharedAutonomyEnv(CornerEnvContinuous):
 
     def step(self, action: np.ndarray | None = None):
         """
-        Ejecuta un paso en el entorno con autonomía compartida.
+        Executes a step in the shared autonomy environment.
 
         Args:
-            action: Si se proporciona, se interpreta como la acción residual a_r calculada por el
-                algoritmo RL. Si es None, se consulta a self.copilot si está presente, o se asume 0.
+            action: If provided, interpreted as the residual action a_r computed by the
+                RL algorithm. If None, queries self.copilot if present, or assumes 0.
 
         Returns:
             tuple: (copilot_obs, reward, terminated, truncated, info)
@@ -153,20 +153,20 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         else:
             a_r = np.asarray(action, dtype=np.float32)
 
-        # Aplicar factor de escala y acotamiento a la acción residual
+        # Apply scale factor and clipping to the residual action
         a_r = np.clip(a_r * self.residual_scale, -1.0, 1.0)
         self.current_residual_action = a_r
 
-        # Composición aditiva: a = clip(a_h + a_r, -1, 1)
+        # Additive composition: a = clip(a_h + a_r, -1, 1)
         a_composed = np.clip(self.current_pilot_action + a_r, -1.0, 1.0)
         self.current_composed_action = a_composed
 
-        # Ejecución del paso físico subyacente en Webots
+        # Execute the underlying physical step in Webots
         drone_obs, goal_reward, terminated, truncated, info = super().step(a_composed)
         self.current_drone_obs = drone_obs
         self.last_goal_reward = float(goal_reward)
 
-        # Cálculo de recompensa de seguridad general (goal-agnostic)
+        # Compute general safety reward (goal-agnostic)
         d_min = (
             min(self.dist_front, self.dist_back, self.dist_right, self.dist_left) / 1000.0
         )
@@ -184,7 +184,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         )
         self.last_safety_reward = float(safety_reward)
 
-        # Selección de la señal de recompensa según el modo configurado
+        # Select reward signal according to configured mode
         if self.reward_mode == "safety":
             step_reward = safety_reward
         elif self.reward_mode == "goal_directed":
@@ -194,7 +194,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         else:
             step_reward = safety_reward
 
-        # Próxima acción del piloto para el siguiente paso y construcción de la nueva observación
+        # Next pilot action for the following step and construction of the new observation
         next_pilot_action = self._get_pilot_action(drone_obs)
         self.current_pilot_action = next_pilot_action
         next_copilot_obs = self._build_copilot_observation(drone_obs, next_pilot_action)
@@ -203,7 +203,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         return next_copilot_obs, step_reward, terminated, truncated, info
 
     def _get_shared_autonomy_info(self) -> dict:
-        """Devuelve el diccionario con métricas del sistema de autonomía compartida."""
+        """Returns the dictionary with shared autonomy system metrics."""
         return {
             "pilot_action": self.current_pilot_action.copy(),
             "residual_action": self.current_residual_action.copy(),

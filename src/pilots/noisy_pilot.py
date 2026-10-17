@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Piloto sintético con inyección de ruido gaussiano sobre la acción continua.
+Synthetic pilot with Gaussian noise injection over the continuous action.
 
-Simula imprecisión de pilotaje humano o temblor en los comandos de control continuo,
-sumando una perturbación gaussiana N(0, sigma^2) a la política del piloto óptimo.
+Simulates human piloting imprecision or tremor in continuous control commands
+by adding a Gaussian perturbation N(0, sigma^2) to the optimal pilot's policy.
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ from src.pilots.base_pilot import BasePilot
 
 class NoisyPilot(BasePilot):
     """
-    Piloto sintético que perturba las acciones continuas del piloto óptimo con ruido gaussiano.
+    Synthetic pilot that perturbs the optimal pilot's continuous actions with Gaussian noise.
     """
 
     def __init__(
@@ -23,12 +23,12 @@ class NoisyPilot(BasePilot):
         seed: int | None = None,
     ):
         """
-        Inicializa el NoisyPilot.
+        Initializes the NoisyPilot.
 
         Args:
-            optimal_pilot: Instancia del piloto base u óptimo (debe proveer get_action o predict).
-            sigma: Desviación estándar del ruido gaussiano (escalar o vector de 4 elementos).
-            seed: Semilla para el generador de números aleatorios independiente.
+            optimal_pilot: Instance of the base or optimal pilot (must provide get_action or predict).
+            sigma: Standard deviation of the Gaussian noise (scalar or 4-element vector).
+            seed: Seed for the independent random number generator.
         """
         self.optimal_pilot = optimal_pilot
         self.sigma = sigma
@@ -36,7 +36,7 @@ class NoisyPilot(BasePilot):
 
     def _get_base_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Obtiene la acción base propuesta por el piloto óptimo según su interfaz disponible.
+        Retrieves the base action proposed by the optimal pilot according to its available interface.
         """
         if hasattr(self.optimal_pilot, "get_action"):
             act = self.optimal_pilot.get_action(observation)
@@ -52,13 +52,13 @@ class NoisyPilot(BasePilot):
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Calcula la acción perturbada sumando ruido gaussiano y recortando al rango [-1.0, 1.0].
+        Computes the perturbed action by adding Gaussian noise and clipping to [-1.0, 1.0].
 
         Args:
-            observation: Vector de observaciones del entorno.
+            observation: Environment observation vector.
 
         Returns:
-            np.ndarray: Vector de acción de 4 dimensiones en [-1.0, 1.0].
+            np.ndarray: 4-dimensional action vector in [-1.0, 1.0].
         """
         base_action = self._get_base_action(observation)
         noise = self._rng.normal(0.0, self.sigma, size=base_action.shape).astype(np.float32)
@@ -67,9 +67,9 @@ class NoisyPilot(BasePilot):
 
     def choose_action(self, observation: np.ndarray) -> tuple[np.ndarray, list]:
         """
-        Alias compatible con la interfaz histórica de la tesis (Diedrichs, 2025).
+        Compatibility alias for the historical thesis interface (Diedrichs, 2025).
 
         Returns:
-            tuple: (acción seleccionada, lista de estados auxiliares vacía).
+            tuple: (selected action, empty list of auxiliary states).
         """
         return self.get_action(observation), []

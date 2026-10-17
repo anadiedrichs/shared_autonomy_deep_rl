@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Piloto óptimo con interfaz unificada de inferencia continua.
+Optimal pilot with a unified continuous inference interface.
 
-Permite cargar y ejecutar políticas entrenadas con diferentes backends
-(Stable-Baselines3 PPO o RLtools SAC) bajo la misma interfaz común de control.
+Allows loading and executing policies trained with different backends
+(Stable-Baselines3 PPO or RLtools SAC) under the same common control interface.
 """
 
 import os
@@ -14,7 +14,7 @@ from src.pilots.base_pilot import BasePilot
 
 class OptimalPilot(BasePilot):
     """
-    Interfaz unificada para el piloto óptimo, abstrayendo el framework de entrenamiento.
+    Unified interface for the optimal pilot, abstracting away the training framework.
     """
 
     SUPPORTED_BACKENDS = ("sb3_ppo", "rltools_sac", "dummy", "heuristic")
@@ -28,14 +28,14 @@ class OptimalPilot(BasePilot):
         **kwargs,
     ):
         """
-        Inicializa el piloto óptimo.
+        Initializes the optimal pilot.
 
         Args:
-            backend: Framework del modelo ("sb3_ppo", "rltools_sac", "dummy" o "heuristic").
-            checkpoint_path: Ruta al archivo de checkpoint en disco (.zip, .pt, etc.).
-            model_instance: Instancia pre-cargada opcional del modelo.
-            deterministic: Si es True, ejecuta la política en modo determinista sin exploración.
-            **kwargs: Argumentos adicionales (por ejemplo para HeuristicPilot).
+            backend: Model framework ("sb3_ppo", "rltools_sac", "dummy", or "heuristic").
+            checkpoint_path: Path to the checkpoint file on disk (.zip, .pt, etc.).
+            model_instance: Optional pre-loaded model instance.
+            deterministic: If True, executes the policy in deterministic mode without exploration.
+            **kwargs: Additional arguments (e.g., for HeuristicPilot).
         """
         backend_lower = backend.lower()
         if backend_lower not in self.SUPPORTED_BACKENDS:
@@ -57,9 +57,9 @@ class OptimalPilot(BasePilot):
 
     def _load_checkpoint(self):
         """
-        Carga el checkpoint desde el disco según el backend seleccionado.
+        Loads the checkpoint from disk according to the selected backend.
         """
-        # Resolución inteligente de rutas relativas si no se encuentra directamente desde CWD
+        # Smart resolution of relative paths if not found directly from CWD
         if self.checkpoint_path is not None and not os.path.exists(self.checkpoint_path):
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
             candidate = os.path.normpath(os.path.join(project_root, self.checkpoint_path.lstrip("./")))
@@ -90,7 +90,7 @@ class OptimalPilot(BasePilot):
                 )
 
         elif self.backend == "rltools_sac":
-            # Soporte para modelos y checkpoints de RLtools (.h exportados)
+            # Support for RLtools models and checkpoints (exported .h files)
             try:
                 import rltools
                 if (
@@ -111,18 +111,18 @@ class OptimalPilot(BasePilot):
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Calcula la acción del piloto óptimo para la observación actual.
+        Computes the optimal pilot action for the current observation.
 
         Args:
-            observation: Vector de observaciones continuo de 11 dimensiones en [-1.0, 1.0].
+            observation: 11-dimensional continuous observation vector in [-1.0, 1.0].
 
         Returns:
-            np.ndarray: Vector de acción continuo de 4 componentes acotado en [-1.0, 1.0].
+            np.ndarray: 4-component continuous action vector bounded in [-1.0, 1.0].
         """
         obs = np.asarray(observation, dtype=np.float32)
 
         if self.backend == "dummy":
-            # Si no hay modelo, emite un comando neutro de hover
+            # If no model is provided, emit a neutral hover command
             if self._model is not None and callable(self._model):
                 raw_act = self._model(obs)
             else:
@@ -159,9 +159,9 @@ class OptimalPilot(BasePilot):
 
     def choose_action(self, observation: np.ndarray) -> tuple[np.ndarray, list]:
         """
-        Alias compatible con la API de la tesis (Diedrichs, 2025).
+        Compatibility alias for the thesis API (Diedrichs, 2025).
 
         Returns:
-            tuple: (acción seleccionada, lista de estados auxiliares vacía).
+            tuple: (selected action, empty list of auxiliary states).
         """
         return self.get_action(observation), []

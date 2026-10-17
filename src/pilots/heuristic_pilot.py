@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Piloto determinista basado en heurísticas para el entorno CornerEnvContinuous.
+Heuristic-based deterministic pilot for the CornerEnvContinuous environment.
 
-Permite operar en dos enfoques principales según el parámetro 'mode':
-  1. 'open_loop' (o 'enfoque1', 'fixed'):
-     Emite una acción fija constante en lazo abierto hacia la esquina objetivo.
-     Ideal para validación cinemática directa y experimentos en línea recta.
-  2. 'proportional' (o 'enfoque2', 'closed_loop'):
-     Controlador proporcional en lazo cerrado tipo P-Controller sobre la posición 3D.
-     Calcula el vector de error cartesiano hacia el cono, lo proyecta al sistema del
-     cuerpo del dron (body frame), y modula la velocidad de aproximación con frenado
-     automático dentro del radio de éxito para mantener hover estable.
+Supports two main operating approaches depending on the 'mode' parameter:
+  1. 'open_loop' (or 'enfoque1', 'fixed'):
+     Emits a constant fixed open-loop action toward the target corner.
+     Ideal for direct kinematic validation and straight-line experiments.
+  2. 'proportional' (or 'enfoque2', 'closed_loop'):
+     Closed-loop proportional controller (P-Controller) over 3D position.
+     Computes the Cartesian error vector toward the cone, projects it onto the drone's
+     body frame, and modulates approach speed with automatic braking inside the
+     success radius to maintain stable hover.
 """
 
 from math import cos, sin, sqrt
@@ -21,7 +21,7 @@ from src.pilots.base_pilot import BasePilot
 
 class HeuristicPilot(BasePilot):
     """
-    Piloto heurístico determinista con múltiples modalidades de control.
+    Deterministic heuristic pilot with multiple control modalities.
     """
 
     SUPPORTED_MODES = (
@@ -33,7 +33,7 @@ class HeuristicPilot(BasePilot):
         "closed_loop",
     )
 
-    # Coordenadas de los 4 conos en la habitación de 2x2m (altitud de referencia: 0.55m)
+    # Coordinates of the 4 cones in the 2x2m room (reference altitude: 0.55m)
     CORNER_COORDINATES = {
         "cone_1": np.array([0.9, 0.9, 0.55], dtype=np.float32),
         "cone_2": np.array([-0.9, 0.9, 0.55], dtype=np.float32),
@@ -55,19 +55,19 @@ class HeuristicPilot(BasePilot):
         target_speed_ratio: float = 0.90,
     ):
         """
-        Inicializa el piloto heurístico determinista.
+        Initializes the deterministic heuristic pilot.
 
         Args:
-            mode: Modo de funcionamiento ('open_loop'/'enfoque1' o 'proportional'/'enfoque2').
-            corner_name: Identificador del cono objetivo ("cone_1", "cone_2", "cone_3", "cone_4").
-            target_position: Posición cartesiana objetivo opcional [x, y, z] (anula corner_name si se especifica).
-            env: Referencia opcional al entorno CornerEnvContinuous para lectura directa de odometría/GPS.
-            fixed_action: Vector de acción continuo [vx, vy, yaw_rate, vz] para modo open_loop.
-            kp_xy: Ganancia proporcional para velocidad horizontal en lazo cerrado.
-            kp_z: Ganancia proporcional para variación de altitud en lazo cerrado.
-            target_altitude: Altitud objetivo en metros (por defecto 0.55 m para superar el umbral de 0.50 m).
-            target_radius: Radio en metros dentro del cual se modula la desaceleración (por defecto 0.15 m).
-            target_speed_ratio: Fracción de la velocidad máxima en lazo abierto (en [0.0, 1.0]).
+            mode: Operating mode ('open_loop'/'enfoque1' or 'proportional'/'enfoque2').
+            corner_name: Target cone identifier ("cone_1", "cone_2", "cone_3", "cone_4").
+            target_position: Optional Cartesian target position [x, y, z] (overrides corner_name if specified).
+            env: Optional reference to the CornerEnvContinuous environment for direct odometry/GPS reading.
+            fixed_action: Continuous action vector [vx, vy, yaw_rate, vz] for open_loop mode.
+            kp_xy: Proportional gain for horizontal velocity in closed loop.
+            kp_z: Proportional gain for altitude variation in closed loop.
+            target_altitude: Target altitude in meters (default 0.55 m to exceed the 0.50 m threshold).
+            target_radius: Radius in meters within which deceleration is modulated (default 0.15 m).
+            target_speed_ratio: Fraction of maximum speed in open loop (in [0.0, 1.0]).
         """
         mode_lower = mode.lower()
         if mode_lower not in self.SUPPORTED_MODES:
@@ -85,17 +85,17 @@ class HeuristicPilot(BasePilot):
         self.target_radius = float(target_radius)
         self.target_speed_ratio = float(np.clip(target_speed_ratio, 0.1, 1.0))
 
-        # Configurar posición objetivo cartesiana [x, y, z]
+        # Configure Cartesian target position [x, y, z]
         if target_position is not None:
             self.target_position = np.asarray(target_position, dtype=np.float32)
         else:
             self.target_position = self.CORNER_COORDINATES.get(
                 corner_name, np.array([0.9, 0.9, self.target_altitude], dtype=np.float32)
             ).copy()
-        # Asegurar altitud objetivo deseada
+        # Ensure desired target altitude
         self.target_position[2] = self.target_altitude
 
-        # Configurar acción fija para Enfoque 1 (open_loop)
+        # Configure fixed action for Approach 1 (open_loop)
         if fixed_action is not None:
             self.fixed_action = np.clip(np.asarray(fixed_action, dtype=np.float32), -1.0, 1.0)
         else:
@@ -103,16 +103,16 @@ class HeuristicPilot(BasePilot):
 
     def _calculate_default_fixed_action(self) -> np.ndarray:
         """
-        Calcula la acción constante por defecto hacia la esquina objetivo en lazo abierto.
-        Toma en cuenta la orientación inicial del dron en el mundo de Webots (yaw ≈ π/2,
-        donde el frente del dron (eje +X local) apunta hacia el norte (+Y global) y su
-        lateral derecho (eje -Y local) apunta hacia el este (+X global)).
+        Computes the default constant open-loop action toward the target corner.
+        Accounts for the drone's initial orientation in the Webots world (yaw ≈ π/2,
+        where the drone's front (local +X axis) points north (global +Y) and its
+        right side (local -Y axis) points east (global +X)).
         """
         dx = float(self.target_position[0])
         dy = float(self.target_position[1])
 
-        # En el mundo Webots crazyflie.wbt, el dron inicia rotado ~90° (π/2 rad) hacia el norte (+Y global).
-        # Su frente (eje +X body) apunta hacia +Y global, y su lado derecho (eje -Y body) hacia +X global (+este).
+        # In the Webots world crazyflie.wbt, the drone starts rotated ~90° (π/2 rad) toward north (global +Y).
+        # Its front (+X body axis) points toward global +Y, and its right side (-Y body axis) toward global +X (+east).
         yaw_init = np.pi / 2.0
         if self.env is not None and getattr(self.env, "the_drone_took_off", False):
             yaw_init = float(getattr(self.env, "yaw", np.pi / 2.0))
@@ -125,7 +125,7 @@ class HeuristicPilot(BasePilot):
         vx_sign = 1.0 if dx_body >= 0.0 else -1.0
         vy_sign = 1.0 if dy_body >= 0.0 else -1.0
 
-        # vz = 0.60 para generar ascenso constante de 0.30m a 0.55m durante el vuelo
+        # vz = 0.60 to generate steady climb from 0.30m to 0.55m during flight
         return np.array(
             [
                 vx_sign * self.target_speed_ratio,
@@ -138,7 +138,7 @@ class HeuristicPilot(BasePilot):
 
     def _get_open_loop_action(self, observation: np.ndarray) -> np.ndarray:
         """
-        Enfoque 1: Acción fija constante en lazo abierto.
+        Approach 1: Constant fixed open-loop action.
         """
         return np.copy(self.fixed_action)
 
@@ -146,19 +146,19 @@ class HeuristicPilot(BasePilot):
         self, observation: np.ndarray, env: object | None = None
     ) -> np.ndarray:
         """
-        Enfoque 2: Controlador proporcional en lazo cerrado con frenado y mantenimiento de altitud.
+        Approach 2: Closed-loop proportional controller with braking and altitude hold.
         """
         active_env = env if env is not None else self.env
 
-        # 1. Obtención de odometría global del dron
+        # 1. Retrieve global drone odometry
         if active_env is not None and hasattr(active_env, "x_global"):
             curr_x = float(active_env.x_global)
             curr_y = float(active_env.y_global)
             curr_z = float(getattr(active_env, "alt", getattr(active_env, "z_global", 0.30)))
             curr_yaw = float(getattr(active_env, "yaw", 0.0))
         else:
-            # Estimación desde la observación si no se provee el entorno
-            # obs[6] = altitud normalizada en [0.1, 5.0]
+            # Estimate from observation if the environment is not provided
+            # obs[6] = normalized altitude in [0.1, 5.0]
             obs = np.asarray(observation, dtype=np.float32)
             alt_norm = float(obs[6]) if len(obs) > 6 else 0.0
             curr_z = 0.1 + (alt_norm + 1.0) / 2.0 * (5.0 - 0.1)
@@ -166,33 +166,33 @@ class HeuristicPilot(BasePilot):
             curr_y = 0.0
             curr_yaw = 0.0
 
-        # 2. Errores cartesianos hacia el objetivo
+        # 2. Cartesian errors toward the target
         err_x = float(self.target_position[0] - curr_x)
         err_y = float(self.target_position[1] - curr_y)
         err_z = float(self.target_position[2] - curr_z)
         dist_xy = float(sqrt(err_x * err_x + err_y * err_y))
 
-        # 3. Transformación del error horizontal al marco de referencia del cuerpo del dron (body frame)
+        # 3. Transform horizontal error to the drone's body reference frame (body frame)
         cos_yaw = cos(curr_yaw)
         sin_yaw = sin(curr_yaw)
         err_x_body = float(err_x * cos_yaw + err_y * sin_yaw)
         err_y_body = float(-err_x * sin_yaw + err_y * cos_yaw)
 
-        # 4. Modulación proporcional de comandos horizontales
+        # 4. Proportional modulation of horizontal commands
         if dist_xy > self.target_radius:
-            # En vuelo libre hacia el cono: comando proporcional acotado a [-1.0, 1.0]
+            # In free flight toward the cone: proportional command bounded to [-1.0, 1.0]
             cmd_vx = float(np.clip(self.kp_xy * err_x_body, -1.0, 1.0))
             cmd_vy = float(np.clip(self.kp_xy * err_y_body, -1.0, 1.0))
         else:
-            # Dentro del radio del objetivo: zona de frenado suave para hover estable
+            # Within the target radius: smooth braking zone for stable hover
             brake_scale = max(dist_xy / self.target_radius, 0.1)
             cmd_vx = float(np.clip(self.kp_xy * err_x_body * brake_scale, -0.25, 0.25))
             cmd_vy = float(np.clip(self.kp_xy * err_y_body * brake_scale, -0.25, 0.25))
 
-        # 5. Comando vertical proporcional hacia la altitud objetivo (0.55m)
+        # 5. Proportional vertical command toward the target altitude (0.55m)
         cmd_vz = float(np.clip(self.kp_z * err_z, -1.0, 1.0))
 
-        # 6. Yaw neutral (mantiene orientación frontal estable sin giros bruscos)
+        # 6. Neutral yaw (maintains stable forward heading without sharp turns)
         cmd_yaw = 0.0
 
         return np.array([cmd_vx, cmd_vy, cmd_yaw, cmd_vz], dtype=np.float32)
@@ -201,14 +201,14 @@ class HeuristicPilot(BasePilot):
         self, observation: np.ndarray, env: object | None = None
     ) -> np.ndarray:
         """
-        Calcula la acción del piloto heurístico para la observación actual.
+        Computes the heuristic pilot action for the current observation.
 
         Args:
-            observation: Vector continuo de observaciones de 11 dimensiones.
-            env: Referencia opcional al entorno para lectura de posición y yaw en lazo cerrado.
+            observation: 11-dimensional continuous observation vector.
+            env: Optional reference to the environment for reading position and yaw in closed loop.
 
         Returns:
-            np.ndarray: Vector de acción continuo [vx, vy, yaw_rate, vz] en [-1.0, 1.0]^4.
+            np.ndarray: Continuous action vector [vx, vy, yaw_rate, vz] in [-1.0, 1.0]^4.
         """
         if self.is_open_loop:
             return self._get_open_loop_action(observation)
@@ -218,9 +218,9 @@ class HeuristicPilot(BasePilot):
         self, observation: np.ndarray, env: object | None = None
     ) -> tuple[np.ndarray, list]:
         """
-        Alias compatible con la API de pilotos sintéticos de la tesis (Diedrichs, 2025).
+        Compatibility alias for the synthetic pilots API from the thesis (Diedrichs, 2025).
 
         Returns:
-            tuple: (acción seleccionada, lista vacía de estados auxiliares).
+            tuple: (selected action, empty list of auxiliary states).
         """
         return self.get_action(observation, env=env), []

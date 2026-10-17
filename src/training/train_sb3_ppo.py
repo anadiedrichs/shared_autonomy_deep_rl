@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Entrenamiento del piloto óptimo continuo con PPO (Stable-Baselines3).
+Continuous optimal pilot training with PPO (Stable-Baselines3).
 
-Entrena una política gaussiana continua con PPO sobre CornerEnvContinuous,
-utilizando los hiperparámetros validados en la tesis (Diedrichs, 2025, Params2):
-    - Tasa de aprendizaje: 1e-4
-    - Factor de descuento (gamma): 0.97
-    - Arquitectura de la red: MLP [64, 64]
+Trains a continuous Gaussian policy with PPO on CornerEnvContinuous,
+using the hyperparameters validated in the thesis (Diedrichs, 2025, Params2):
+    - Learning rate: 1e-4
+    - Discount factor (gamma): 0.97
+    - Network architecture: MLP [64, 64]
     - GAE lambda: 0.95
-    - Coeficiente de valor (vf_coef): 0.5
-    - Monitoreo y registro con TensorBoard y Monitor wrapper
+    - Value function coefficient (vf_coef): 0.5
+    - Monitoring and logging with TensorBoard and Monitor wrapper
 """
 
 import argparse
 import os
 import sys
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -39,23 +39,23 @@ def train_sb3_ppo(
     progress_bar: bool = True,
 ):
     """
-    Ejecuta el ciclo de entrenamiento continuo de PPO con Stable-Baselines3.
+    Execute the continuous PPO training loop with Stable-Baselines3.
 
     Args:
-        total_timesteps: Pasos de tiempo totales para el entrenamiento.
-        seed: Semilla para reproducibilidad numérica.
-        learning_rate: Tasa de aprendizaje del optimizador Adam.
-        gamma: Factor de descuento para retornos futuros.
-        corner_name: Identificador DEF del cono objetivo en Webots ("cone_1").
-        max_episode_steps: Límite máximo de pasos por episodio (por defecto 1000).
-        log_dir: Directorio para guardar logs de TensorBoard y métricas de Monitor.
-        model_save_path: Ruta destino para el archivo .zip del modelo entrenado.
-        checkpoint_freq: Frecuencia de pasos para guardar checkpoints intermedios.
-        verbose: Nivel de detalle en salida estándar (0: nada, 1: info, 2: debug).
-        progress_bar: Si es True, muestra la barra de progreso durante learn() (requiere rich y tqdm).
+        total_timesteps: Total timesteps for training.
+        seed: Random seed for numerical reproducibility.
+        learning_rate: Learning rate of the Adam optimizer.
+        gamma: Discount factor for future returns.
+        corner_name: DEF identifier of the target cone in Webots ("cone_1").
+        max_episode_steps: Maximum step limit per episode (default 1000).
+        log_dir: Directory to save TensorBoard logs and Monitor metrics.
+        model_save_path: Destination path for the trained model .zip file.
+        checkpoint_freq: Step frequency for saving intermediate checkpoints.
+        verbose: Standard output verbosity level (0: none, 1: info, 2: debug).
+        progress_bar: If True, displays the progress bar during learn() (requires rich and tqdm).
 
     Returns:
-        PPO: Instancia del modelo entrenado.
+        PPO: Trained model instance.
     """
     try:
         from stable_baselines3 import PPO
@@ -69,7 +69,7 @@ def train_sb3_ppo(
         )
 
     class HParamCallback(BaseCallback):
-        """Callback para registrar hiperparámetros en la pestaña HPARAMS de TensorBoard."""
+        """Callback to log hyperparameters in the TensorBoard HPARAMS tab."""
 
         def __init__(self, hparams: dict, metrics: dict | None = None, verbose: int = 0):
             super().__init__(verbose)
@@ -86,7 +86,7 @@ def train_sb3_ppo(
         def _on_step(self) -> bool:
             return True
 
-    # Crear directorios de salida
+    # Create output directories
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(model_save_path)), exist_ok=True)
 
@@ -99,7 +99,7 @@ def train_sb3_ppo(
     )
     env = Monitor(raw_env, filename=os.path.join(log_dir, "monitor.csv"))
 
-    # Configuración de arquitectura neuronal: 2 capas ocultas de 64 neuronas (Params2)
+    # Neural architecture configuration: 2 hidden layers of 64 neurons (Params2)
     policy_kwargs = dict(
         net_arch=dict(pi=[64, 64], vf=[64, 64])
     )
@@ -122,10 +122,10 @@ def train_sb3_ppo(
         verbose=verbose,
     )
 
-    # Callbacks de entrenamiento
+    # Training callbacks
     callbacks = []
 
-    # 1. Registro de hiperparámetros en TensorBoard (HPARAMS)
+    # 1. Hyperparameter logging in TensorBoard (HPARAMS)
     hparams_dict = {
         "algorithm": "SB3-PPO",
         "learning_rate": learning_rate,
@@ -143,7 +143,7 @@ def train_sb3_ppo(
     }
     callbacks.append(HParamCallback(hparams=hparams_dict, metrics=metrics_dict, verbose=verbose))
 
-    # 2. Checkpoints periódicos opcionales
+    # 2. Optional periodic checkpoints
     if checkpoint_freq > 0:
         checkpoint_callback = CheckpointCallback(
             save_freq=checkpoint_freq,
@@ -153,7 +153,7 @@ def train_sb3_ppo(
         )
         callbacks.append(checkpoint_callback)
 
-    # Comprobar disponibilidad de librerías para la barra de progreso
+    # Check availability of libraries for the progress bar
     if progress_bar:
         try:
             import rich  # noqa: F401
@@ -181,7 +181,7 @@ def train_sb3_ppo(
 
 
 def parse_args():
-    """Analizador de argumentos de línea de comandos."""
+    """Command-line argument parser."""
     parser = argparse.ArgumentParser(
         description="Entrenamiento de piloto óptimo con PPO (Stable-Baselines3)."
     )

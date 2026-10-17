@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Recompensa goal-agnostic (R_general) para entrenar la política residual del copiloto.
+Goal-agnostic reward (R_general) for training the copilot residual policy.
 
-Siguiendo el esquema de Schaff & Walter (2020), el copiloto se entrena para minimizar su
-propia intervención mientras previene colisiones y violaciones de seguridad, sin conocer
-el cono objetivo al que se dirige el piloto humano o sintético.
+Following the scheme of Schaff & Walter (2020), the copilot is trained to minimize its
+own intervention while preventing collisions and safety violations, without knowledge of
+the target cone pursued by the human or synthetic pilot.
 
-Componentes:
-    1. Penalización exponencial por proximidad a obstáculos/paredes.
-    2. Penalización por magnitud de la acción residual: -lambda * ||a_r||^2 (mínima intervención).
-    3. Penalización severa por colisión o caída: evento terminal (-50.0).
-    4. Bonificación opcional por paso sobrevivido en vuelo seguro.
+Components:
+    1. Exponential penalty for obstacle/wall proximity.
+    2. Residual action magnitude penalty: -lambda * ||a_r||^2 (minimal intervention).
+    3. Severe penalty for collision or fall: terminal event (-50.0).
+    4. Optional survival bonus per step in safe flight.
 """
 
 import numpy as np
@@ -29,35 +29,35 @@ def general_safety_reward(
     alive_bonus: float = 0.0,
 ) -> float:
     """
-    Calcula la recompensa de seguridad continua y agnóstica a la meta para el copiloto residual.
+    Computes the continuous goal-agnostic safety reward for the residual copilot.
 
     Args:
-        distance_to_obstacle_m: Distancia mínima detectada a obstáculos/paredes en metros.
-        residual_action: Vector de acción residual a_r en [-1.0, 1.0]^4.
-        collided: True si el dron colisionó contra pared, cayó al suelo o salió de límites.
-        lambda_intervention: Coeficiente de penalización por intervención (peso de ||a_r||^2).
-        obstacle_weight: Amplitud de la penalización exponencial por cercanía a obstáculos.
-        obstacle_decay: Distancia característica de decaimiento en metros (por defecto 0.15 m).
-        collision_penalty: Penalización aplicada en el evento terminal de colisión (por defecto 50.0).
-        alive_bonus: Bonificación por cada paso en vuelo seguro sin colisionar (por defecto 0.0).
+        distance_to_obstacle_m: Minimum detected distance to obstacles/walls in meters.
+        residual_action: Residual action vector a_r in [-1.0, 1.0]^4.
+        collided: True if the drone collided with a wall, fell to the ground, or went out of bounds.
+        lambda_intervention: Intervention penalty coefficient (weight on ||a_r||^2).
+        obstacle_weight: Amplitude of the exponential obstacle proximity penalty.
+        obstacle_decay: Characteristic decay distance in meters (default 0.15 m).
+        collision_penalty: Penalty applied on a terminal collision event (default 50.0).
+        alive_bonus: Bonus per step in safe flight without collision (default 0.0).
 
     Returns:
-        float: Recompensa escalar para el copiloto en el paso actual.
+        float: Scalar reward for the copilot at the current step.
     """
-    # 1. Penalización por cercanía a paredes u obstáculos (proximidad suave)
+    # 1. Penalty for proximity to walls or obstacles (smooth proximity)
     r_obstacle = obstacle_proximity_penalization(
         distance_to_obstacle_m, amplitude=obstacle_weight, decay=obstacle_decay
     )
 
-    # 2. Penalización por magnitud del residual ||a_r||^2 para promover mínima intervención
+    # 2. Penalty for residual magnitude ||a_r||^2 to promote minimal intervention
     a_r = np.asarray(residual_action, dtype=np.float32)
     intervention_magnitude = float(np.dot(a_r, a_r))
     r_intervention = -float(lambda_intervention) * intervention_magnitude
 
-    # 3. Recompensa base
+    # 3. Base reward
     reward = r_obstacle + r_intervention + float(alive_bonus)
 
-    # 4. Evento terminal de colisión / caída
+    # 4. Terminal collision / fall event
     if collided:
         reward -= float(collision_penalty)
 
@@ -76,27 +76,27 @@ def compute_general_safety_reward(
     alive_bonus: float = 0.0,
 ) -> float:
     """
-    Función de utilidad para calcular la recompensa de seguridad a partir de sensores ToF o distancia directa.
+    Utility function to compute the safety reward from ToF sensor readings or direct distance.
 
     Args:
-        distance_to_obstacle_m: Distancia en metros al obstáculo más cercano.
-        residual_action: Vector de acción residual a_r.
-        collided: True si ocurrió colisión o caída.
-        dist_sensors_mm: Lecturas ToF en milímetros [front, back, right, left] (opcional).
-        lambda_intervention: Coeficiente de intervención.
-        obstacle_weight: Amplitud de penalización por obstáculos.
-        obstacle_decay: Decaimiento espacial de obstáculos.
-        collision_penalty: Penalización por colisión.
-        alive_bonus: Bonificación de supervivencia.
+        distance_to_obstacle_m: Distance in meters to the nearest obstacle.
+        residual_action: Residual action vector a_r.
+        collided: True if a collision or fall occurred.
+        dist_sensors_mm: ToF readings in millimeters [front, back, right, left] (optional).
+        lambda_intervention: Intervention coefficient.
+        obstacle_weight: Obstacle penalty amplitude.
+        obstacle_decay: Obstacle spatial decay.
+        collision_penalty: Collision penalty.
+        alive_bonus: Survival bonus.
 
     Returns:
-        float: Recompensa escalar calculada.
+        float: Computed scalar reward.
     """
     if distance_to_obstacle_m is None:
         if dist_sensors_mm is not None and len(dist_sensors_mm) > 0:
             distance_to_obstacle_m = float(min(dist_sensors_mm)) / 1000.0
         else:
-            distance_to_obstacle_m = 2.0  # Sin obstáculos cercanos por defecto
+            distance_to_obstacle_m = 2.0  # No nearby obstacles by default
 
     act_r = residual_action if residual_action is not None else np.zeros(4, dtype=np.float32)
 

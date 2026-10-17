@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para las funciones de evaluación y métricas en src/evaluation/metrics.py.
+Unit tests for evaluation functions and metrics in src/evaluation/metrics.py.
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import tempfile
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -21,7 +21,7 @@ from src.evaluation.metrics import evaluate_pilot, create_pilot_instance
 
 
 class MockPilot(BasePilot):
-    """Piloto simulado para tests unitarios."""
+    """Simulated pilot for unit tests."""
 
     def __init__(self, action: np.ndarray | None = None):
         self.action = action if action is not None else np.array([0.5, -0.5, 0.0, 0.0], dtype=np.float32)
@@ -35,16 +35,16 @@ class MockPilot(BasePilot):
 
 
 def test_create_pilot_instance():
-    """Valida la instanciación de diferentes tipos de pilotos mediante la fábrica."""
+    """Validate instantiation of different pilot types via the factory."""
     # 1. HeuristicPilot
     h_pilot = create_pilot_instance(pilot_type="heuristic", heuristic_mode="open_loop")
     assert isinstance(h_pilot, BasePilot)
 
-    # 2. OptimalPilot con dummy backend
+    # 2. OptimalPilot with dummy backend
     opt_pilot = create_pilot_instance(pilot_type="optimal", backend="dummy")
     assert isinstance(opt_pilot, BasePilot)
 
-    # 3. Tipo no válido
+    # 3. Invalid type
     try:
         create_pilot_instance(pilot_type="desconocido")
         assert False, "Debería haber lanzado ValueError"
@@ -53,7 +53,7 @@ def test_create_pilot_instance():
 
 
 def test_evaluate_pilot_mock_environment():
-    """Valida la ejecución y cálculo estadístico de evaluate_pilot."""
+    """Validate execution and statistical computation of evaluate_pilot."""
     env = CornerEnvContinuous(max_episode_steps=10, verbose=0)
     pilot = MockPilot()
 
@@ -69,7 +69,7 @@ def test_evaluate_pilot_mock_environment():
             save_csv_path=csv_file,
         )
 
-        # 1. Validar claves requeridas en el diccionario de resultados
+        # 1. Validate required keys in the results dictionary
         expected_keys = [
             "n_episodes",
             "success_rate",
@@ -96,14 +96,14 @@ def test_evaluate_pilot_mock_environment():
         assert 0.0 <= results["crash_rate"] <= 1.0
         assert 0.0 <= results["timeout_rate"] <= 1.0
 
-        # 2. Validar que el piloto fue reseteado
+        # 2. Validate that the pilot was reset
         assert pilot.reset_called is True
 
-        # 3. Validar creación del archivo CSV
+        # 3. Validate creation of the CSV file
         assert os.path.exists(csv_file), "El archivo CSV de resultados no fue creado"
         with open(csv_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
-            assert len(lines) == 6  # 1 fila encabezado + 5 episodios
+            assert len(lines) == 6  # 1 header row + 5 episodes
 
 
 if __name__ == "__main__":

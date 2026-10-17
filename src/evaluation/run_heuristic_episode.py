@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Script de evaluación y validación de vuelo de HeuristicPilot en CornerEnvContinuous.
+Flight evaluation and validation script for HeuristicPilot in CornerEnvContinuous.
 
-Permite ejecutar un episodio individual con el piloto heurístico en modo lazo abierto
-(enfoque 1) o lazo cerrado proporcional (enfoque 2), imprimiendo la telemetría en
-tiempo real y reportando la cinemática exacta hasta el objetivo.
+Allows running a single episode with the heuristic pilot in open-loop mode
+(approach 1) or closed-loop proportional mode (approach 2), printing real-time
+telemetry and reporting exact kinematics up to the target.
 
-Uso:
+Usage:
     python src/evaluation/run_heuristic_episode.py --mode proportional --corner cone_1
     python src/evaluation/run_heuristic_episode.py --mode open_loop --corner cone_1
 """
@@ -16,7 +16,7 @@ import os
 import sys
 import time
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -34,18 +34,18 @@ def run_heuristic_episode(
     verbose: int = 1,
 ) -> dict:
     """
-    Ejecuta un episodio completo con HeuristicPilot y reporta métricas.
+    Executes a full episode with HeuristicPilot and reports metrics.
 
     Args:
-        mode: 'proportional' (enfoque 2) o 'open_loop' (enfoque 1).
-        corner_name: Identificador del cono objetivo ("cone_1", "cone_2", etc.).
-        max_episode_steps: Límite de pasos del episodio.
-        log_interval: Frecuencia de pasos para imprimir telemetría en consola.
-        enable_trajectory_logging: Si es True, guarda CSV con la trayectoria física.
-        verbose: Nivel de detalle de salida del entorno.
+        mode: 'proportional' (approach 2) or 'open_loop' (approach 1).
+        corner_name: Target cone identifier ("cone_1", "cone_2", etc.).
+        max_episode_steps: Episode step limit.
+        log_interval: Step frequency for printing telemetry to the console.
+        enable_trajectory_logging: If True, saves a CSV with the physical trajectory.
+        verbose: Environment output detail level.
 
     Returns:
-        dict: Resumen con métricas de la ejecución (éxito, pasos, recompensa, etc.).
+        dict: Summary with execution metrics (success, steps, reward, etc.).
     """
     print("=" * 70)
     print(f"[Heuristic Flight] Iniciando evaluación de HeuristicPilot")
@@ -54,7 +54,7 @@ def run_heuristic_episode(
     print(f"  Límite de pasos: {max_episode_steps}")
     print("=" * 70)
 
-    # 1. Instanciar entorno
+    # 1. Instantiate environment
     env = CornerEnvContinuous(
         corner_name=corner_name,
         max_episode_steps=max_episode_steps,
@@ -62,7 +62,7 @@ def run_heuristic_episode(
         verbose=verbose,
     )
 
-    # 2. Instanciar piloto heurístico vinculado al entorno
+    # 2. Instantiate heuristic pilot linked to the environment
     pilot = HeuristicPilot(
         mode=mode,
         corner_name=corner_name,
@@ -71,7 +71,7 @@ def run_heuristic_episode(
         target_radius=0.15,
     )
 
-    # 3. Reset y despegue
+    # 3. Reset and take-off
     obs, info = env.reset()
     start_time = time.time()
 
@@ -90,14 +90,14 @@ def run_heuristic_episode(
     while not (terminated or truncated):
         step_count += 1
 
-        # Obtener acción del piloto heurístico
+        # Obtain action from heuristic pilot
         action = pilot.get_action(obs, env=env)
 
-        # Aplicar paso en la simulación
+        # Apply step in simulation
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += reward
 
-        # Imprimir telemetría periódica o en pasos terminales
+        # Print periodic telemetry or on terminal steps
         if step_count % log_interval == 0 or terminated or truncated:
             dist = float(info.get("dist_min_target", env.get_distance_to_target()))
             cmd_str = f"[{action[0]:+.2f}, {action[1]:+.2f}, {action[3]:+.2f}]"

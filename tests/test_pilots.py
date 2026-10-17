@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para los pilotos sintéticos (NoisyPilot y LaggyPilot).
+Unit tests for synthetic pilots (NoisyPilot and LaggyPilot).
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -21,7 +21,7 @@ from src.pilots.noisy_pilot import NoisyPilot
 
 
 class DummyOptimalPilot:
-    """Piloto simulado para pruebas unitarias."""
+    """Simulated pilot for unit testing."""
 
     def __init__(self, fixed_action: np.ndarray | None = None):
         if fixed_action is None:
@@ -32,12 +32,12 @@ class DummyOptimalPilot:
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         self.call_count += 1
-        # Genera una acción que depende ligeramente del primer elemento de obs para distinguir pasos
+        # Generate an action that depends slightly on the first element of obs to distinguish steps
         return self.fixed_action + float(observation[0]) * 0.01
 
 
 def test_noisy_pilot_zero_noise():
-    """Valida que con sigma=0.0 el NoisyPilot devuelva la acción exacta del piloto óptimo."""
+    """Validate that with sigma=0.0 NoisyPilot returns the exact action of the optimal pilot."""
     base_pilot = DummyOptimalPilot()
     noisy_pilot = NoisyPilot(optimal_pilot=base_pilot, sigma=0.0, seed=42)
 
@@ -45,15 +45,15 @@ def test_noisy_pilot_zero_noise():
     action = noisy_pilot.get_action(obs)
 
     assert np.allclose(action, base_pilot.fixed_action)
-    # Probar alias choose_action
+    # Test choose_action alias
     action_alias, states = noisy_pilot.choose_action(obs)
     assert np.allclose(action_alias, base_pilot.fixed_action)
     assert states == []
 
 
 def test_noisy_pilot_with_noise_and_clipping():
-    """Valida que el ruido altere la acción pero respete el rango [-1.0, 1.0]."""
-    # Acción base en el límite superior
+    """Validate that noise alters the action while respecting the [-1.0, 1.0] range."""
+    # Base action near the upper limit
     base_pilot = DummyOptimalPilot(fixed_action=np.array([0.98, -0.98, 0.0, 0.5], dtype=np.float32))
     noisy_pilot = NoisyPilot(optimal_pilot=base_pilot, sigma=0.5, seed=123)
 
@@ -65,28 +65,28 @@ def test_noisy_pilot_with_noise_and_clipping():
         assert np.all(act >= -1.0)
         assert np.all(act <= 1.0)
 
-    # Verificar que las acciones varían por el ruido
+    # Verify that actions vary due to noise
     action_array = np.array(actions)
     assert np.std(action_array[:, 0]) > 0.05
 
 
 def test_laggy_pilot_always_repeat():
-    """Valida que con p_repeat=1.0 repita siempre la primera acción obtenida."""
+    """Validate that with p_repeat=1.0 it always repeats the first obtained action."""
     base_pilot = DummyOptimalPilot()
     laggy_pilot = LaggyPilot(optimal_pilot=base_pilot, p_repeat=1.0, seed=42)
 
     obs1 = np.array([1.0] + [0.0] * 10, dtype=np.float32)
     first_action = laggy_pilot.get_action(obs1)
 
-    # Segundo y tercer paso con distintas observaciones
+    # Second and third steps with different observations
     obs2 = np.array([5.0] + [0.0] * 10, dtype=np.float32)
     obs3 = np.array([10.0] + [0.0] * 10, dtype=np.float32)
 
     assert np.allclose(laggy_pilot.get_action(obs2), first_action)
     assert np.allclose(laggy_pilot.get_action(obs3), first_action)
-    assert base_pilot.call_count == 1  # No debe consultar al piloto óptimo de nuevo
+    assert base_pilot.call_count == 1  # Must not query the optimal pilot again
 
-    # Al llamar a reset(), debe tomar una nueva acción
+    # Upon calling reset(), it must take a new action
     laggy_pilot.reset()
     assert laggy_pilot.last_action is None
     new_action = laggy_pilot.get_action(obs2)
@@ -95,7 +95,7 @@ def test_laggy_pilot_always_repeat():
 
 
 def test_laggy_pilot_never_repeat():
-    """Valida que con p_repeat=0.0 consulte siempre al piloto base en cada paso."""
+    """Validate that with p_repeat=0.0 it always queries the base pilot on every step."""
     base_pilot = DummyOptimalPilot()
     laggy_pilot = LaggyPilot(optimal_pilot=base_pilot, p_repeat=0.0, seed=42)
 
@@ -107,7 +107,7 @@ def test_laggy_pilot_never_repeat():
 
 
 def test_laggy_pilot_invalid_probability():
-    """Valida que lance ValueError con probabilidades inválidas fuera de [0, 1]."""
+    """Validate that it raises ValueError for invalid probabilities outside [0, 1]."""
     base_pilot = DummyOptimalPilot()
     try:
         LaggyPilot(optimal_pilot=base_pilot, p_repeat=-0.1)
@@ -123,29 +123,29 @@ def test_laggy_pilot_invalid_probability():
 
 
 def test_optimal_pilot_dummy():
-    """Valida la inferencia unificada con backend dummy y funciones personalizadas."""
+    """Validate unified inference with dummy backend and custom functions."""
     from src.pilots.optimal_pilot import OptimalPilot
 
-    # Piloto dummy por defecto (hover neutro: [0, 0, 0, 0])
+    # Default dummy pilot (neutral hover: [0, 0, 0, 0])
     pilot_default = OptimalPilot(backend="dummy")
     obs = np.zeros(11, dtype=np.float32)
     act = pilot_default.get_action(obs)
     assert np.allclose(act, np.zeros(4, dtype=np.float32))
 
-    # Piloto dummy con función personalizada
+    # Dummy pilot with custom function
     custom_func = lambda o: np.array([0.2, -0.3, 0.1, 0.0], dtype=np.float32)
     pilot_custom = OptimalPilot(backend="dummy", model_instance=custom_func)
     act_custom = pilot_custom.get_action(obs)
     assert np.allclose(act_custom, np.array([0.2, -0.3, 0.1, 0.0], dtype=np.float32))
 
-    # Probar alias choose_action
+    # Test choose_action alias
     act_alias, states = pilot_custom.choose_action(obs)
     assert np.allclose(act_alias, act_custom)
     assert states == []
 
 
 def test_optimal_pilot_unsupported_backend():
-    """Valida que lance ValueError ante backends no reconocidos."""
+    """Validate that it raises ValueError for unrecognized backends."""
     from src.pilots.optimal_pilot import OptimalPilot
 
     try:
@@ -156,10 +156,10 @@ def test_optimal_pilot_unsupported_backend():
 
 
 def test_optimal_pilot_relative_path_resolution():
-    """Valida que OptimalPilot resuelva rutas relativas buscando en la raíz del proyecto."""
+    """Validate that OptimalPilot resolves relative paths by searching in the project root."""
     from src.pilots.optimal_pilot import OptimalPilot
 
-    # Archivo que no existe en ningún lado debe lanzar FileNotFoundError
+    # File that does not exist anywhere must raise FileNotFoundError
     try:
         OptimalPilot(backend="sb3_ppo", checkpoint_path="archivo_inexistente.zip")
         assert False, "Debería haber lanzado FileNotFoundError"
@@ -168,7 +168,7 @@ def test_optimal_pilot_relative_path_resolution():
 
 
 def test_base_pilot_inheritance_and_interface():
-    """Valida que todos los pilotos hereden de BasePilot y cumplan su contrato común."""
+    """Validate that all pilots inherit from BasePilot and fulfill its common contract."""
     from src.pilots.base_pilot import BasePilot, Pilot
     from src.pilots.heuristic_pilot import HeuristicPilot
     from src.pilots.laggy_pilot import LaggyPilot
@@ -177,7 +177,7 @@ def test_base_pilot_inheritance_and_interface():
 
     assert Pilot is BasePilot
 
-    # 1. No se puede instanciar BasePilot directamente sin implementar get_action
+    # 1. Cannot instantiate BasePilot directly without implementing get_action
     try:
         class IncompletePilot(BasePilot):
             pass
@@ -186,7 +186,7 @@ def test_base_pilot_inheritance_and_interface():
     except TypeError:
         pass
 
-    # 2. Instancias de pilotos heredan de BasePilot
+    # 2. Pilot instances inherit from BasePilot
     heuristic = HeuristicPilot(mode="open_loop")
     optimal = OptimalPilot(backend="dummy")
     noisy = NoisyPilot(optimal_pilot=heuristic, sigma=0.0)
@@ -200,16 +200,16 @@ def test_base_pilot_inheritance_and_interface():
         act = p.get_action(obs)
         assert act.shape == (4,)
 
-        # Validar llamada directa __call__
+        # Validate direct __call__ invocation
         act_call = p(obs)
         assert np.allclose(act, act_call)
 
-        # Validar contrato choose_action
+        # Validate choose_action contract
         act_choose, aux = p.choose_action(obs)
         assert np.allclose(act, act_choose)
         assert aux == []
 
-        # Validar reset
+        # Validate reset
         p.reset()
 
 

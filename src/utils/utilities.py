@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Funciones de utilidad matemática y procesamiento para el dron y entornos de RL.
+Mathematical and data processing utility functions for the drone and RL environments.
 """
 
 import numpy as np
@@ -15,19 +15,19 @@ def normalize_to_range(
     clip: bool = False,
 ) -> float:
     """
-    Normaliza un valor numérico escalar desde un rango de origen [min_val, max_val]
-    hacia un nuevo rango objetivo [new_min, new_max].
+    Normalizes a scalar numerical value from a source range [min_val, max_val]
+    to a target range [new_min, new_max].
 
     Args:
-        value: Valor numérico a normalizar.
-        min_val: Límite inferior del rango de origen.
-        max_val: Límite superior del rango de origen.
-        new_min: Límite inferior del rango destino (por defecto -1.0).
-        new_max: Límite superior del rango destino (por defecto 1.0).
-        clip: Si es True, recorta el resultado dentro de [new_min, new_max].
+        value: Numerical value to normalize.
+        min_val: Lower bound of the source range.
+        max_val: Upper bound of the source range.
+        new_min: Lower bound of the target range (default -1.0).
+        new_max: Upper bound of the target range (default 1.0).
+        clip: If True, clips the result within [new_min, new_max].
 
     Returns:
-        float: Valor normalizado en el rango destino.
+        float: Normalized value in the target range.
     """
     val = float(value)
     min_v = float(min_val)

@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Recompensa orientada a la meta para el Crazyflie en control continuo.
+Goal-directed reward for the Crazyflie under continuous control.
 
-Implementa la formulación de reward shaping multicomponente calibrada:
-    - Progreso diferencial: w_prog * (d_prev - d_now)
-    - Proximidad a obstáculos: -w_obs * exp(-d_min / decay_obs)
-    - Suavidad de acciones: -w_act * ||action - prev_action||^2
-    - Estabilidad angular: -w_omega * ||ang_vel||^2
-    - Costo por paso (anti-hovering): -w_time
+Implements the calibrated multi-component reward shaping formulation:
+    - Differential progress: w_prog * (d_prev - d_now)
+    - Obstacle proximity: -w_obs * exp(-d_min / decay_obs)
+    - Action smoothness: -w_act * ||action - prev_action||^2
+    - Angular stability: -w_omega * ||ang_vel||^2
+    - Step cost (anti-hovering): -w_time
 
-Eventos terminales:
-    - +50.0 al alcanzar el objetivo en altitud segura
-    - -50.0 al colisionar o caer al suelo
+Terminal events:
+    - +50.0 upon reaching the target at a safe altitude
+    - -50.0 upon colliding or falling to the ground
 """
 
 import numpy as np
@@ -23,15 +23,15 @@ def obstacle_proximity_penalization(
     decay: float = 0.10,
 ) -> float:
     """
-    Penalización exponencial por proximidad a paredes u obstáculos.
+    Exponential penalty for proximity to walls or obstacles.
 
     Args:
-        distance_to_obstacle_m: Distancia mínima detectada a obstáculos en metros.
-        amplitude: Magnitud de penalización en contacto (por defecto 0.5).
-        decay: Distancia característica de decaimiento en metros (por defecto 0.10 m = 10 cm).
+        distance_to_obstacle_m: Minimum detected distance to obstacles in meters.
+        amplitude: Penalty magnitude at contact (default 0.5).
+        decay: Characteristic decay distance in meters (default 0.10 m = 10 cm).
 
     Returns:
-        float: Valor de penalización no positivo en [-amplitude, 0.0].
+        float: Non-positive penalty value in [-amplitude, 0.0].
     """
     d = max(float(distance_to_obstacle_m), 0.0)
     return -float(amplitude) * float(np.exp(-d / float(decay)))
@@ -39,14 +39,14 @@ def obstacle_proximity_penalization(
 
 def walls_proximity_penalization(distance_to_obstacle_m: float) -> float:
     """
-    Ecuación 3.1 de la tesis (conservada por compatibilidad): penalización lineal por proximidad.
+    Equation 3.1 from the thesis (kept for backwards compatibility): linear proximity penalty.
     """
     return 50.0 * float(distance_to_obstacle_m) - 10.0
 
 
 def penalization_distance_to_target(distance_to_target_m: float) -> float:
     """
-    Ecuación 3.2 de la tesis (conservada por compatibilidad): 1 / x.
+    Equation 3.2 from the thesis (kept for backwards compatibility): 1 / x.
     """
     dist = max(float(distance_to_target_m), 0.05)
     return 1.0 / dist
@@ -74,33 +74,33 @@ def compute_goal_directed_reward(
     collision_penalty: float = 50.0,
 ) -> float:
     """
-    Calcula la recompensa continua no normalizada para el Crazyflie.
+    Computes the unnormalized continuous reward for the Crazyflie.
 
     Args:
-        d_prev: Distancia euclídea anterior a la meta (en metros).
-        d_now: Distancia euclídea actual a la meta (en metros).
-        action: Vector de acción continuo actual de 4 componentes en [-1.0, 1.0].
-        prev_action: Vector de acción continuo del paso anterior.
-        ang_vel: Velocidad angular en rad/s (vector de 3 componentes del giróscopo).
-        d_min: Distancia mínima detectada a obstáculos en metros.
-        collided: True si el dron colisionó contra pared, cayó al suelo o salió de límites.
-        reached: True si el dron alcanzó el cono meta en altitud segura.
-        state_pos: Posición actual del dron (opcional si se provee d_now).
-        prev_state_pos: Posición previa del dron (opcional si se provee d_prev).
-        goal_pos: Posición del cono objetivo (opcional si se proveen d_prev y d_now).
-        progress_weight: Factor multiplicativo para el progreso diferencial (por defecto 30.0).
-        obstacle_weight: Factor de amplitud de penalización a obstáculos (por defecto 0.5).
-        obstacle_decay: Radio de decaimiento en metros para obstáculos (por defecto 0.10 m).
-        action_smoothness_weight: Peso para penalizar cambios bruscos de acción (por defecto 0.05).
-        angular_velocity_weight: Peso para penalizar velocidades angulares altas (por defecto 0.01).
-        time_penalty: Costo fijo por cada paso para evitar hovering inactivo (por defecto 0.01).
-        reached_bonus: Bonificación por alcanzar el objetivo (por defecto +50.0).
-        collision_penalty: Penalización por colisión / caída (por defecto -50.0).
+        d_prev: Previous Euclidean distance to the goal (in meters).
+        d_now: Current Euclidean distance to the goal (in meters).
+        action: Current 4-component continuous action vector in [-1.0, 1.0].
+        prev_action: Continuous action vector from the previous step.
+        ang_vel: Angular velocity in rad/s (3-component gyroscope vector).
+        d_min: Minimum detected distance to obstacles in meters.
+        collided: True if the drone collided with a wall, fell to the ground, or went out of bounds.
+        reached: True if the drone reached the target cone at a safe altitude.
+        state_pos: Current position of the drone (optional if d_now is provided).
+        prev_state_pos: Previous position of the drone (optional if d_prev is provided).
+        goal_pos: Target cone position (optional if d_prev and d_now are provided).
+        progress_weight: Multiplicative factor for differential progress (default 30.0).
+        obstacle_weight: Obstacle penalty amplitude factor (default 0.5).
+        obstacle_decay: Decay radius in meters for obstacles (default 0.10 m).
+        action_smoothness_weight: Weight for penalizing abrupt action changes (default 0.05).
+        angular_velocity_weight: Weight for penalizing high angular velocities (default 0.01).
+        time_penalty: Fixed cost per step to prevent inactive hovering (default 0.01).
+        reached_bonus: Bonus for reaching the target (default +50.0).
+        collision_penalty: Penalty for collision / fall (default -50.0).
 
     Returns:
-        float: Recompensa escalar del paso.
+        float: Scalar reward for the step.
     """
-    # Si se pasan posiciones vectoriales en lugar de distancias escalares
+    # If vector positions are passed instead of scalar distances
     if d_prev is None and prev_state_pos is not None and goal_pos is not None:
         p_prev = np.asarray(prev_state_pos, dtype=np.float32)
         g = np.asarray(goal_pos, dtype=np.float32)
@@ -122,23 +122,23 @@ def compute_goal_directed_reward(
     )
     omega = np.asarray(ang_vel, dtype=np.float32) if ang_vel is not None else np.zeros(3, dtype=np.float32)
 
-    # 1. Progreso diferencial hacia la meta
+    # 1. Differential progress toward the goal
     r = float(progress_weight) * (d_prev_val - d_now_val)
 
-    # 2. Cercanía a obstáculos (exponencial suave)
+    # 2. Obstacle proximity (smooth exponential)
     r += obstacle_proximity_penalization(d_min, amplitude=obstacle_weight, decay=obstacle_decay)
 
-    # 3. Suavidad de acciones (penaliza cambios bruscos entre pasos consecutivos)
+    # 3. Action smoothness (penalizes abrupt changes between consecutive steps)
     act_diff = act - prev_act
     r -= float(action_smoothness_weight) * float(np.dot(act_diff, act_diff))
 
-    # 4. Velocidad angular (penaliza giros bruscos y fomenta estabilidad)
+    # 4. Angular velocity (penalizes sharp turns and encourages stability)
     r -= float(angular_velocity_weight) * float(np.dot(omega, omega))
 
-    # 5. Costo temporal por paso (elimina reward farming por inacción)
+    # 5. Per-step time cost (eliminates reward farming through inaction)
     r -= float(time_penalty)
 
-    # 6. Eventos terminales
+    # 6. Terminal events
     if reached:
         r += float(reached_bonus)
     if collided:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Módulo de pilotos sintéticos y aprendidos para Crazyflie.
+Module of synthetic and learned pilots for the Crazyflie.
 """
 
 from src.pilots.base_pilot import BasePilot, Pilot

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para la función de recompensa general_safety_reward y compute_general_safety_reward.
+Unit tests for the general_safety_reward and compute_general_safety_reward functions.
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -19,21 +19,21 @@ from src.rewards.reward_general_safety import (
 
 
 def test_zero_intervention_far_from_obstacles():
-    """Valida que sin intervención residual y lejos de obstáculos la recompensa sea cercana a cero."""
+    """Validate that without residual intervention and far from obstacles the reward is close to zero."""
     residual = np.zeros(4, dtype=np.float32)
-    # Lejos de obstáculos (2.0 metros)
+    # Far from obstacles (2.0 meters)
     r = general_safety_reward(
         distance_to_obstacle_m=2.0,
         residual_action=residual,
         collided=False,
         lambda_intervention=0.1,
     )
-    # Proximidad exponencial a 2m con decay 0.15 es despreciable (< 1e-5)
+    # Exponential proximity at 2m with decay 0.15 is negligible (< 1e-5)
     assert np.isclose(r, 0.0, atol=1e-3)
 
 
 def test_intervention_penalty_scaling():
-    """Valida que la penalización por magnitud del residual escale como -lambda * ||a_r||^2."""
+    """Validate that the residual magnitude penalty scales as -lambda * ||a_r||^2."""
     residual = np.array([0.5, 0.5, 0.5, 0.5], dtype=np.float32)  # ||a_r||^2 = 1.0
     lambda_val = 0.20
     r = general_safety_reward(
@@ -45,7 +45,7 @@ def test_intervention_penalty_scaling():
     expected_intervention = -lambda_val * 1.0
     assert np.isclose(r, expected_intervention, atol=1e-3)
 
-    # Con acción de magnitud máxima ||[1, 1, 1, 1]||^2 = 4.0
+    # With maximum magnitude action ||[1, 1, 1, 1]||^2 = 4.0
     residual_max = np.ones(4, dtype=np.float32)
     r_max = general_safety_reward(
         distance_to_obstacle_m=2.0,
@@ -57,9 +57,9 @@ def test_intervention_penalty_scaling():
 
 
 def test_obstacle_proximity_penalty():
-    """Valida que la cercanía a obstáculos penalice adecuadamente según la distancia."""
+    """Validate that proximity to obstacles penalizes appropriately according to distance."""
     residual = np.zeros(4, dtype=np.float32)
-    # Justo en contacto con el obstáculo (d = 0.0 m)
+    # Right in contact with the obstacle (d = 0.0 m)
     r_contact = general_safety_reward(
         distance_to_obstacle_m=0.0,
         residual_action=residual,
@@ -70,7 +70,7 @@ def test_obstacle_proximity_penalty():
     # exp(0) = 1 -> -1.5
     assert np.isclose(r_contact, -1.5, atol=1e-3)
 
-    # A 0.15m (1 tau de distancia): -1.5 * exp(-1) = -1.5 * 0.367879 = -0.5518
+    # At 0.15m (1 tau distance): -1.5 * exp(-1) = -1.5 * 0.367879 = -0.5518
     r_tau = general_safety_reward(
         distance_to_obstacle_m=0.15,
         residual_action=residual,
@@ -82,7 +82,7 @@ def test_obstacle_proximity_penalty():
 
 
 def test_collision_terminal_penalty():
-    """Valida que un evento terminal de colisión aplique la penalización collision_penalty."""
+    """Validate that a terminal collision event applies the collision_penalty."""
     residual = np.zeros(4, dtype=np.float32)
     collision_pen = 50.0
     r_normal = general_safety_reward(
@@ -101,8 +101,8 @@ def test_collision_terminal_penalty():
 
 
 def test_compute_general_safety_reward_with_sensors():
-    """Valida la función helper con lecturas de sensores ToF en milímetros."""
-    # Sensores: front=1000mm, back=150mm (más cercano), right=500mm, left=800mm
+    """Validate the helper function with ToF sensor readings in millimeters."""
+    # Sensors: front=1000mm, back=150mm (closest), right=500mm, left=800mm
     sensors_mm = [1000.0, 150.0, 500.0, 800.0]
     residual = np.array([0.1, 0.0, 0.0, 0.0], dtype=np.float32)
 

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Métricas y protocolo de evaluación para pilotos en CornerEnvContinuous.
+Evaluation metrics and protocol for pilots in CornerEnvContinuous.
 
-Implementa la función 'evaluate_pilot' y CLI de evaluación análogos a las tablas
-4.1-4.4 de la tesis (Diedrichs, 2025):
-    - Tasa de éxito (% de episodios que alcanzaron el cono en vuelo seguro).
-    - Tasa de caídas / choques (terminados por caída al suelo o límites).
-    - Tasa de tiempo agotado (episodios truncados por exceder max_episode_steps).
-    - Recompensa acumulada: promedio y desviación estándar por episodio.
-    - Longitud de pasos del episodio: promedio y desviación estándar.
-    - Exportación opcional de métricas a DataFrame y archivo CSV.
+Implements the 'evaluate_pilot' function and evaluation CLI analogous to Tables
+4.1-4.4 from the thesis (Diedrichs, 2025):
+    - Success rate (% of episodes reaching the cone in safe flight).
+    - Crash / fall rate (terminated due to ground crash or out of bounds).
+    - Timeout rate (episodes truncated for exceeding max_episode_steps).
+    - Cumulative reward: mean and standard deviation per episode.
+    - Episode step length: mean and standard deviation.
+    - Optional export of metrics to DataFrame and CSV file.
 """
 
 import argparse
@@ -17,7 +17,7 @@ import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -39,18 +39,18 @@ def evaluate_pilot(
     save_csv_path: str | None = None,
 ) -> dict:
     """
-    Ejecuta 'n_episodes' deterministas evaluando un piloto sobre un entorno.
+    Executes 'n_episodes' deterministically evaluating a pilot on an environment.
 
     Args:
-        env: Instancia del entorno (ej. CornerEnvContinuous o SharedAutonomyEnv).
-        pilot: Instancia de un piloto derivado de BasePilot.
-        n_episodes: Número de episodios a evaluar.
-        seed: Semilla inicial para reproducibilidad de los episodios.
-        verbose: Nivel de detalle (0: silencioso, 1: resumen por episodio y global, 2: paso a paso).
-        save_csv_path: Ruta opcional para guardar los resultados detallados en formato CSV.
+        env: Environment instance (e.g., CornerEnvContinuous or SharedAutonomyEnv).
+        pilot: Instance of a pilot derived from BasePilot.
+        n_episodes: Number of episodes to evaluate.
+        seed: Initial seed for episode reproducibility.
+        verbose: Detail level (0: silent, 1: per-episode and global summary, 2: step-by-step).
+        save_csv_path: Optional path to save detailed results in CSV format.
 
     Returns:
-        dict: Resumen estadístico con medias, desviaciones estándar y tasas de éxito/caída.
+        dict: Statistical summary with means, standard deviations, and success/crash rates.
     """
     rewards: list[float] = []
     lengths: list[int] = []
@@ -79,7 +79,7 @@ def evaluate_pilot(
         term_reason = "unknown"
 
         while not (terminated or truncated):
-            # Inferencia determinista según contrato común BasePilot
+            # Deterministic inference according to common BasePilot contract
             action = pilot.get_action(obs)
             obs, reward, terminated, truncated, info = env.step(action)
 
@@ -89,7 +89,7 @@ def evaluate_pilot(
             if verbose >= 2:
                 print(f"  [Ep {ep} | Paso {ep_steps}] Acc: {action.round(3)} | Rew: {reward:.3f}")
 
-        # Análisis de causas de finalización del episodio
+        # Analyze episode termination causes
         is_success = bool(info.get("is_success", False))
         corner_flag = info.get("corner")
 
@@ -120,7 +120,7 @@ def evaluate_pilot(
                 f"Dist. Final: {final_dist:.3f}m"
             )
 
-    # Computar estadísticas agregadas
+    # Compute aggregate statistics
     total_eps = len(successes)
     success_count = sum(1 for s in successes if s)
     crash_count = sum(1 for t in terminations if t in ("fall", "out_of_bounds"))
@@ -155,7 +155,7 @@ def evaluate_pilot(
         print(f"  Distancia Final Media          : {metrics_summary['final_distance_mean']:.3f}m ± {metrics_summary['final_distance_std']:.3f}m")
         print(f"{'='*65}\n")
 
-    # Exportación opcional a archivo CSV
+    # Optional export to CSV file
     if save_csv_path is not None:
         save_dir = os.path.dirname(os.path.abspath(save_csv_path))
         if save_dir and not os.path.exists(save_dir):
@@ -174,7 +174,7 @@ def evaluate_pilot(
             df = pd.DataFrame(data)
             df.to_csv(save_csv_path, index=False)
         else:
-            # Fallback a escritura CSV estándar si pandas no estuviera disponible
+            # Fallback to standard CSV writer if pandas is unavailable
             import csv
             with open(save_csv_path, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
@@ -203,7 +203,7 @@ def create_pilot_instance(
     base_pilot_type: str = "noisy",
 ) -> BasePilot:
     """
-    Fábrica de instanciación unificada para cualquier piloto del ecosistema.
+    Unified instantiation factory for any pilot in the ecosystem.
     """
     from src.pilots.heuristic_pilot import HeuristicPilot
     from src.pilots.laggy_pilot import LaggyPilot
@@ -224,17 +224,17 @@ def create_pilot_instance(
             corner_name=corner,
         )
     elif pt == "noisy":
-        # Piloto base óptimo al que se le inyecta ruido
+        # Optimal base pilot with injected noise
         base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
         return NoisyPilot(optimal_pilot=base, sigma=sigma, seed=seed)
     elif pt == "laggy":
-        # Piloto base óptimo al que se le inyecta retardo
+        # Optimal base pilot with injected delay
         base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
         return LaggyPilot(optimal_pilot=base, p_repeat=p_repeat, seed=seed)
     elif pt == "assisted":
         from src.copilot.residual_policy import AssistedPilot, ResidualPolicy
 
-        # Crear el piloto base asistido (por defecto noisy o el configurado)
+        # Create the assisted base pilot (noisy by default or as configured)
         base = create_pilot_instance(
             pilot_type=base_pilot_type,
             checkpoint=checkpoint,
@@ -259,7 +259,7 @@ def create_pilot_instance(
 
 
 def parse_args():
-    """Analizador de argumentos para la evaluación en línea de comandos."""
+    """Command-line argument parser for evaluation."""
     parser = argparse.ArgumentParser(
         description="Evaluación de pilotos en CornerEnvContinuous con métricas de la tesis."
     )

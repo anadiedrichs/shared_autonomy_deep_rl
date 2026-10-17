@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para la clase HeuristicPilot (Enfoque 1: open_loop, Enfoque 2: proportional).
+Unit tests for the HeuristicPilot class (Approach 1: open_loop, Approach 2: proportional).
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -24,7 +24,7 @@ from src.pilots.optimal_pilot import OptimalPilot
 
 
 class MockDroneEnv:
-    """Mock ligero de CornerEnvContinuous para pruebas de lazo cerrado."""
+    """Lightweight mock of CornerEnvContinuous for closed-loop testing."""
 
     def __init__(self, x=0.0, y=0.0, z=0.30, yaw=0.0):
         self.x_global = x
@@ -35,33 +35,33 @@ class MockDroneEnv:
 
 
 def test_heuristic_pilot_open_loop_default():
-    """Valida la generación de acciones constantes en lazo abierto (Enfoque 1)."""
-    # Cuadrante 1: cone_1 (+x, +y en global -> adelante y derecha en body frame)
+    """Validate constant action generation in open loop (Approach 1)."""
+    # Quadrant 1: cone_1 (+x, +y in global -> forward and right in body frame)
     pilot1 = HeuristicPilot(mode="open_loop", corner_name="cone_1")
     obs = np.zeros(11, dtype=np.float32)
     act1 = pilot1.get_action(obs)
     assert act1.shape == (4,)
-    assert act1[0] > 0.0  # vx > 0 (adelante)
-    assert act1[1] < 0.0  # vy < 0 (derecha)
+    assert act1[0] > 0.0  # vx > 0 (forward)
+    assert act1[1] < 0.0  # vy < 0 (right)
     assert act1[2] == 0.0  # yaw = 0
-    assert act1[3] > 0.0  # vz > 0 (ascenso)
+    assert act1[3] > 0.0  # vz > 0 (climb)
 
-    # Cuadrante 2: cone_2 (-x, +y en global -> adelante e izquierda en body frame)
+    # Quadrant 2: cone_2 (-x, +y in global -> forward and left in body frame)
     pilot2 = HeuristicPilot(mode="open_loop", corner_name="cone_2")
     act2 = pilot2.get_action(obs)
-    assert act2[0] > 0.0  # vx > 0 (adelante)
-    assert act2[1] > 0.0  # vy > 0 (izquierda)
+    assert act2[0] > 0.0  # vx > 0 (forward)
+    assert act2[1] > 0.0  # vy > 0 (left)
 
-    # Cuadrante 3: cone_3 (-x, -y en global -> atrás e izquierda en body frame)
+    # Quadrant 3: cone_3 (-x, -y in global -> backward and left in body frame)
     pilot3 = HeuristicPilot(mode="enfoque1", corner_name="cone_3")
     act3 = pilot3.get_action(obs)
-    assert act3[0] < 0.0  # vx < 0 (atrás)
-    assert act3[1] > 0.0  # vy > 0 (izquierda)
+    assert act3[0] < 0.0  # vx < 0 (backward)
+    assert act3[1] > 0.0  # vy > 0 (left)
     assert act3[3] > 0.0
 
 
 def test_heuristic_pilot_open_loop_custom_action():
-    """Valida que una acción fija personalizada se respete y recorte a [-1, 1]."""
+    """Validate that a custom fixed action is respected and clipped to [-1, 1]."""
     custom_act = [0.75, -0.65, 0.10, 0.40]
     pilot = HeuristicPilot(mode="fixed", fixed_action=custom_act)
     obs = np.zeros(11, dtype=np.float32)
@@ -70,7 +70,7 @@ def test_heuristic_pilot_open_loop_custom_action():
 
 
 def test_heuristic_pilot_proportional_climbing_and_direction():
-    """Valida el cálculo de errores y saturación en lazo cerrado (Enfoque 2)."""
+    """Validate error computation and saturation in closed loop (Approach 2)."""
     env_mock = MockDroneEnv(x=0.0, y=0.0, z=0.30, yaw=0.0)
     pilot = HeuristicPilot(
         mode="proportional",
@@ -82,17 +82,17 @@ def test_heuristic_pilot_proportional_climbing_and_direction():
     obs = np.zeros(11, dtype=np.float32)
     act = pilot.get_action(obs)
 
-    # Lejos del objetivo en (0.9, 0.9): saturación a velocidad máxima hacia adelante y derecha
+    # Far from target at (0.9, 0.9): saturation to maximum forward and right velocity
     assert np.isclose(act[0], 1.0)
     assert np.isclose(act[1], 1.0)
     assert act[2] == 0.0
-    # Por debajo de 0.55m: debe comandar ascenso
+    # Below 0.55m: must command climb
     assert act[3] > 0.0
 
 
 def test_heuristic_pilot_proportional_hover_at_target():
-    """Valida que desacelere y haga hover estable al alcanzar la posición objetivo."""
-    # Posicionado exactamente sobre el cono_1 a altitud 0.55m
+    """Validate that it decelerates and hovers stably upon reaching the target position."""
+    # Positioned exactly over cone_1 at altitude 0.55m
     env_mock = MockDroneEnv(x=0.9, y=0.9, z=0.55, yaw=0.0)
     pilot = HeuristicPilot(
         mode="enfoque2",
@@ -104,16 +104,16 @@ def test_heuristic_pilot_proportional_hover_at_target():
     obs = np.zeros(11, dtype=np.float32)
     act = pilot.get_action(obs)
 
-    # Dentro de la zona objetivo y en altura deseada: comandos cercanos a cero
+    # Inside the target zone and at desired altitude: commands close to zero
     assert np.isclose(act[0], 0.0, atol=1e-3)
     assert np.isclose(act[1], 0.0, atol=1e-3)
     assert np.isclose(act[3], 0.0, atol=1e-3)
 
 
 def test_heuristic_pilot_body_frame_rotation():
-    """Valida que la transformación al marco del dron (body frame) rote adecuadamente."""
-    # Dron rotado 90 grados (pi / 2 rad) hacia la izquierda
-    # Para ir a (0.9, 0.0), en body frame eso está a su DERECHA (-y_body)
+    """Validate that the transformation to the drone's body frame rotates properly."""
+    # Drone rotated 90 degrees (pi / 2 rad) to the left
+    # To go to (0.9, 0.0), in body frame that is to its RIGHT (-y_body)
     env_mock = MockDroneEnv(x=0.0, y=0.0, z=0.55, yaw=np.pi / 2.0)
     pilot = HeuristicPilot(
         mode="proportional",
@@ -124,13 +124,13 @@ def test_heuristic_pilot_body_frame_rotation():
     obs = np.zeros(11, dtype=np.float32)
     act = pilot.get_action(obs)
 
-    # Con yaw = 90 deg: el avance hacia +X global requiere desplazamiento lateral a la derecha (-vy en body frame)
+    # With yaw = 90 deg: advancing toward global +X requires lateral movement to the right (-vy in body frame)
     assert np.isclose(act[0], 0.0, atol=1e-2)
     assert act[1] < -0.5
 
 
 def test_optimal_pilot_integration_with_heuristic():
-    """Valida que OptimalPilot pueda instanciar y usar HeuristicPilot como backend."""
+    """Validate that OptimalPilot can instantiate and use HeuristicPilot as a backend."""
     pilot = OptimalPilot(backend="heuristic", mode="open_loop", corner_name="cone_1")
     obs = np.zeros(11, dtype=np.float32)
     act = pilot.get_action(obs)
@@ -141,7 +141,7 @@ def test_optimal_pilot_integration_with_heuristic():
 
 
 def test_noisy_and_laggy_with_heuristic_base():
-    """Valida que NoisyPilot y LaggyPilot acepten HeuristicPilot como piloto base."""
+    """Validate that NoisyPilot and LaggyPilot accept HeuristicPilot as a base pilot."""
     base_pilot = HeuristicPilot(mode="open_loop", corner_name="cone_1")
     noisy = NoisyPilot(optimal_pilot=base_pilot, sigma=0.05, seed=42)
     laggy = LaggyPilot(optimal_pilot=base_pilot, p_repeat=0.5, seed=42)

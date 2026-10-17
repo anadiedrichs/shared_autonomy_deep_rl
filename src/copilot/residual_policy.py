@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Política residual del copiloto: pi_r(s, a_h) -> a_r y piloto asistido compuesto.
+Copilot residual policy: pi_r(s, a_h) -> a_r and composite assisted pilot.
 
-Implementa el modelo de asistencia por corrección aditiva según Schaff & Walter (2020):
+Implements the additive correction assistance model according to Schaff & Walter (2020):
     a = clip(a_h + a_r, -1.0, 1.0)
     a_h ~ pi_h(s)
     a_r ~ pi_r(s, a_h)
@@ -16,8 +16,8 @@ from src.pilots.base_pilot import BasePilot
 
 class ResidualPolicy:
     """
-    Interfaz de inferencia del copiloto: observación + acción del piloto -> a_r.
-    Soporta checkpoints de Stable-Baselines3 (.zip), RLtools C header (.h), o modelos en memoria / dummy.
+    Copilot inference interface: observation + pilot action -> a_r.
+    Supports Stable-Baselines3 (.zip) checkpoints, RLtools C headers (.h), or in-memory / dummy models.
     """
 
     SUPPORTED_BACKENDS = ("auto", "sb3_ppo", "sb3_sac", "rltools_sac", "dummy")
@@ -31,14 +31,14 @@ class ResidualPolicy:
         deterministic: bool = True,
     ):
         """
-        Inicializa la política residual.
+        Initializes the residual policy.
 
         Args:
-            checkpoint_path: Ruta al archivo del modelo entrenado (.zip para SB3, .h para RLtools).
-            model: Objeto de modelo o función invocable en memoria (opcional).
-            backend: Motor de inferencia ("auto", "sb3_ppo", "sb3_sac", "rltools_sac", "dummy").
-            residual_scale: Factor de escala / atenuación en [0.0, 1.0] para limitar la autoridad del copiloto.
-            deterministic: True para inferencia determinista, False para estocástica.
+            checkpoint_path: Path to the trained model file (.zip for SB3, .h for RLtools).
+            model: In-memory model object or callable function (optional).
+            backend: Inference engine ("auto", "sb3_ppo", "sb3_sac", "rltools_sac", "dummy").
+            residual_scale: Scale / attenuation factor in [0.0, 1.0] to limit copilot authority.
+            deterministic: True for deterministic inference, False for stochastic.
         """
         self.checkpoint_path = checkpoint_path
         self._model = model
@@ -68,11 +68,11 @@ class ResidualPolicy:
 
     def load(self, checkpoint_path: str, backend: str | None = None) -> None:
         """
-        Carga el modelo entrenado desde el disco.
+        Loads the trained model from disk.
 
         Args:
-            checkpoint_path: Ruta al archivo del checkpoint.
-            backend: Motor de inferencia específico (opcional).
+            checkpoint_path: Path to the checkpoint file.
+            backend: Specific inference engine (optional).
         """
         self.checkpoint_path = checkpoint_path
         if backend is not None and backend != "auto":
@@ -88,7 +88,7 @@ class ResidualPolicy:
                 try:
                     self._model = target_cls.load(self.checkpoint_path)
                 except Exception:
-                    # Intento cruzado en caso de nombre no estándar
+                    # Fallback cross-attempt in case of non-standard naming
                     alt_cls = PPO if self.backend == "sb3_sac" else SAC
                     self._model = alt_cls.load(self.checkpoint_path)
                     self.backend = "sb3_ppo" if alt_cls is PPO else "sb3_sac"
@@ -124,15 +124,15 @@ class ResidualPolicy:
         pilot_action: np.ndarray | None = None,
     ) -> np.ndarray:
         """
-        Calcula la acción residual a_r en [-1.0, 1.0]^4.
+        Computes the residual action a_r in [-1.0, 1.0]^4.
 
         Args:
-            observation: Vector de observaciones (11 dimensiones base o 15 extendida).
-            pilot_action: Vector de acción propuesto por el piloto (4 dimensiones). Si se provee
-                y la observación tiene 11 dimensiones, se concatenan formando [obs, a_h] (15 dimensiones).
+            observation: Observation vector (11-dimensional base or 15-dimensional extended).
+            pilot_action: Action vector proposed by the pilot (4 dimensions). If provided
+                and the observation has 11 dimensions, they are concatenated into [obs, a_h] (15 dimensions).
 
         Returns:
-            np.ndarray: Vector continuo de acción residual a_r en [-1.0, 1.0]^4.
+            np.ndarray: Continuous residual action vector a_r in [-1.0, 1.0]^4.
         """
         obs = np.asarray(observation, dtype=np.float32).flatten()
         if pilot_action is not None:
@@ -175,7 +175,7 @@ class ResidualPolicy:
         return np.clip(scaled_act, -1.0, 1.0)
 
     def reset(self) -> None:
-        """Reinicia el estado interno del copiloto (para modelos con estado o filtros)."""
+        """Resets the internal state of the copilot (for stateful models or filters)."""
         pass
 
     def __call__(
@@ -188,22 +188,22 @@ class ResidualPolicy:
 
 class AssistedPilot(BasePilot):
     """
-    Compone un piloto (BasePilot) con una política residual (ResidualPolicy).
-    Cumple con el contrato BasePilot para poder ser evaluado de forma transparente en la suite de métricas.
+    Composes a pilot (BasePilot) with a residual policy (ResidualPolicy).
+    Complies with the BasePilot contract for transparent evaluation in the metrics suite.
     """
 
     def __init__(self, pilot: BasePilot, copilot: ResidualPolicy):
         """
         Args:
-            pilot: Instancia de BasePilot (HeuristicPilot, OptimalPilot, NoisyPilot, etc.).
-            copilot: Instancia de ResidualPolicy.
+            pilot: BasePilot instance (HeuristicPilot, OptimalPilot, NoisyPilot, etc.).
+            copilot: ResidualPolicy instance.
         """
         self.pilot = pilot
         self.copilot = copilot
 
     def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
-        Calcula la acción combinada a = clip(a_h + a_r, -1.0, 1.0).
+        Computes the combined action a = clip(a_h + a_r, -1.0, 1.0).
         """
         a_h = self.pilot.get_action(observation, **kwargs)
         a_r = self.copilot.get_action(observation, a_h)

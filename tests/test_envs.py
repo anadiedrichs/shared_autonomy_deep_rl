@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para DroneRobotSupervisor y utilidades del entorno.
+Unit tests for DroneRobotSupervisor and environment utilities.
 """
 
 import os
 import sys
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -22,28 +22,28 @@ from src.utils.utilities import normalize_to_range
 
 
 def test_normalize_to_range():
-    """Valida la función de normalización lineal con y sin recorte."""
-    # Mapeo simple de [0, 10] a [-1, 1]
+    """Validate the linear normalization function with and without clipping."""
+    # Simple mapping from [0, 10] to [-1, 1]
     assert np.isclose(normalize_to_range(5.0, 0.0, 10.0, -1.0, 1.0), 0.0)
     assert np.isclose(normalize_to_range(0.0, 0.0, 10.0, -1.0, 1.0), -1.0)
     assert np.isclose(normalize_to_range(10.0, 0.0, 10.0, -1.0, 1.0), 1.0)
 
-    # Recorte con clip=True
+    # Clipping with clip=True
     assert np.isclose(normalize_to_range(15.0, 0.0, 10.0, -1.0, 1.0, clip=True), 1.0)
     assert np.isclose(normalize_to_range(-5.0, 0.0, 10.0, -1.0, 1.0, clip=True), -1.0)
 
 
 def test_drone_robot_supervisor_spaces():
-    """Valida que los espacios de acción y observación tengan las dimensiones y tipos acordados."""
+    """Validate that action and observation spaces have the expected dimensions and types."""
     env = DroneRobotSupervisor()
 
-    # Espacio de acción continuo: 4 dimensiones en [-1, 1]
+    # Continuous action space: 4 dimensions in [-1, 1]
     assert env.action_space.shape == (4,)
     assert env.action_space.dtype == np.float32
     assert np.all(env.action_space.low == -1.0)
     assert np.all(env.action_space.high == 1.0)
 
-    # Espacio de observación continuo: 11 dimensiones en [-1, 1]
+    # Continuous observation space: 11 dimensions in [-1, 1]
     assert env.observation_space.shape == (11,)
     assert env.observation_space.dtype == np.float32
     assert np.all(env.observation_space.low == -1.0)
@@ -51,12 +51,12 @@ def test_drone_robot_supervisor_spaces():
 
 
 def test_denormalize_action():
-    """Valida la conversión física del vector de acción continuo."""
+    """Validate physical conversion of the continuous action vector."""
     env = DroneRobotSupervisor()
     env.dt = 0.032
     env.height_desired = 0.30
 
-    # Acción cero: velocidades nulas y altura sin cambio
+    # Zero action: zero velocities and unchanged altitude
     action_zero = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
     vx, vy, yaw_rate, h = env._denormalize_action(action_zero)
     assert np.isclose(vx, 0.0)
@@ -64,17 +64,17 @@ def test_denormalize_action():
     assert np.isclose(yaw_rate, 0.0)
     assert np.isclose(h, 0.30)
 
-    # Acción máxima: límites máximos configurados
+    # Maximum action: configured maximum limits
     action_max = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
     vx, vy, yaw_rate, h = env._denormalize_action(action_max)
     assert np.isclose(vx, env.MAX_FORWARD_VELOCITY)
     assert np.isclose(vy, env.MAX_LATERAL_VELOCITY)
     assert np.isclose(yaw_rate, env.MAX_YAW_RATE)
-    assert h > 0.30  # Altura debe haber incrementado
+    assert h > 0.30  # Altitude must have increased
 
 
 def test_drone_robot_supervisor_reset_and_step():
-    """Valida que reset() y step() funcionen correctamente en modo desacoplado / mock."""
+    """Validate that reset() and step() work properly in decoupled / mock mode."""
     env = DroneRobotSupervisor()
 
     # Reset
@@ -84,7 +84,7 @@ def test_drone_robot_supervisor_reset_and_step():
     assert isinstance(info, dict)
     assert "is_success" in info
 
-    # Step con acción válida dentro de los límites
+    # Step with valid action within bounds
     action = np.array([0.5, -0.5, 0.1, 0.0], dtype=np.float32)
     next_obs, reward, terminated, truncated, info = env.step(action)
 
@@ -97,7 +97,7 @@ def test_drone_robot_supervisor_reset_and_step():
 
 
 def test_reward_goal_directed():
-    """Valida las fórmulas de recompensa orientada a la meta."""
+    """Validate the goal-directed reward formulas."""
     from src.rewards.reward_goal_directed import (
         walls_proximity_penalization,
         penalization_distance_to_target,
@@ -105,21 +105,21 @@ def test_reward_goal_directed():
         compute_goal_directed_reward,
     )
 
-    # Ecuación 3.1 legacy: 50x - 10
+    # Legacy Equation 3.1: 50x - 10
     assert np.isclose(walls_proximity_penalization(0.10), -5.0)
     assert np.isclose(walls_proximity_penalization(0.0), -10.0)
 
-    # Ecuación 3.2 legacy: 1 / x
+    # Legacy Equation 3.2: 1 / x
     assert np.isclose(penalization_distance_to_target(1.0), 1.0)
     assert np.isclose(penalization_distance_to_target(0.5), 2.0)
 
-    # Penalización exponencial a obstáculos (-0.5 * exp(-d / 0.10))
+    # Exponential obstacle penalty (-0.5 * exp(-d / 0.10))
     assert np.isclose(obstacle_proximity_penalization(0.0, amplitude=0.5, decay=0.10), -0.5)
     assert np.isclose(
         obstacle_proximity_penalization(0.10, amplitude=0.5, decay=0.10), -0.5 * np.exp(-1.0)
     )
 
-    # Meta alcanzada (+50.0) con avance positivo
+    # Goal reached (+50.0) with positive progress
     r_goal = compute_goal_directed_reward(
         d_prev=0.2,
         d_now=0.1,
@@ -127,10 +127,10 @@ def test_reward_goal_directed():
         reached=True,
         collided=False,
     )
-    # Progreso: 30*(0.2-0.1)=3.0, Obstáculo (d=1.0) ~0.0, Time: -0.01, Reached: +50.0 => ~52.99
+    # Progress: 30*(0.2-0.1)=3.0, Obstacle (d=1.0) ~0.0, Time: -0.01, Reached: +50.0 => ~52.99
     assert r_goal >= 50.0
 
-    # Falla / colisión (-50.0)
+    # Failure / collision (-50.0)
     r_fail = compute_goal_directed_reward(
         d_prev=1.0,
         d_now=1.0,
@@ -138,10 +138,10 @@ def test_reward_goal_directed():
         reached=False,
         collided=True,
     )
-    # Colisión: -50.0 - 0.5 (contacto) - 0.01 (tiempo) => -50.51
+    # Collision: -50.0 - 0.5 (contact) - 0.01 (time) => -50.51
     assert r_fail <= -50.0
 
-    # Hovering estático en el centro (costo temporal sin progreso)
+    # Static hovering in the center (time cost without progress)
     r_hover = compute_goal_directed_reward(
         d_prev=1.0,
         d_now=1.0,
@@ -149,7 +149,7 @@ def test_reward_goal_directed():
     )
     assert np.isclose(r_hover, -0.01, atol=1e-3)
 
-    # Penalización por cambio brusco de acción (suavidad)
+    # Penalty for abrupt action change (smoothness)
     r_smooth = compute_goal_directed_reward(
         d_prev=1.0,
         d_now=1.0,
@@ -157,12 +157,12 @@ def test_reward_goal_directed():
         prev_action=np.array([0.0, 0.0, 0.0, 0.0]),
         d_min=1.0,
     )
-    # -0.01 (tiempo) - 0.05 * 1.0 (suavidad) = -0.06
+    # -0.01 (time) - 0.05 * 1.0 (smoothness) = -0.06
     assert np.isclose(r_smooth, -0.06, atol=1e-3)
 
 
 def test_corner_env_continuous():
-    """Valida el entorno CornerEnvContinuous y sus condiciones lógicas."""
+    """Validate the CornerEnvContinuous environment and its logical conditions."""
     from src.envs.corner_env_continuous import CornerEnvContinuous
 
     env = CornerEnvContinuous(corner_name="cone_1")
@@ -181,24 +181,24 @@ def test_corner_env_continuous():
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
 
-    # Prueba de límites geométricos
+    # Geometric bounds test
     env.x_global = 1.5
     assert env.is_out_of_bounds() is True
     env.x_global = 0.0
     assert env.is_out_of_bounds() is False
 
-    # Prueba de caída al suelo (alt < 0.10)
+    # Ground crash test (alt < 0.10)
     env.alt = 0.05
     assert env.is_done() is True
     assert env.corner == "fall"
 
-    # Prueba de objetivo alcanzado en vuelo seguro (cerca del objetivo a [0.8, 0.8])
+    # Goal reached test in safe flight (close to target at [0.8, 0.8])
     env.alt = 0.55
     env.x_global = 0.80
     env.y_global = 0.80
     assert env.achieve_goal() is True
 
-    # Umbral de altitud alt > 0.20
+    # Altitude threshold alt > 0.20
     env.alt = 0.25
     assert env.achieve_goal() is True
     env.alt = 0.15
@@ -206,7 +206,7 @@ def test_corner_env_continuous():
 
 
 def test_verbose_mode():
-    """Valida la configuración del modo verbose en los entornos."""
+    """Validate verbose mode configuration in environments."""
     from src.envs.corner_env_continuous import CornerEnvContinuous
 
     env_silent = CornerEnvContinuous(verbose=0)

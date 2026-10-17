@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Script de entrenamiento para la política residual del copiloto (Autonomía Compartida).
+Training script for the copilot residual policy (Shared Autonomy).
 
-Entrena una política residual pi_r(s, a_h) -> a_r contra un piloto humano o sintético
-congelado (NoisyPilot, LaggyPilot, HeuristicPilot u OptimalPilot), utilizando la función de
-recompensa goal-agnostic general_safety_reward() (Schaff & Walter, 2020).
+Trains a residual policy pi_r(s, a_h) -> a_r against a frozen human or synthetic
+pilot (NoisyPilot, LaggyPilot, HeuristicPilot, or OptimalPilot), using the
+goal-agnostic reward function general_safety_reward() (Schaff & Walter, 2020).
 
-Soporta algoritmos PPO y SAC mediante Stable-Baselines3, con registro en TensorBoard.
+Supports PPO and SAC algorithms via Stable-Baselines3, with TensorBoard logging.
 """
 
 import argparse
@@ -14,7 +14,7 @@ import os
 import sys
 import numpy as np
 
-# Asegurar que el directorio raíz del proyecto esté en PYTHONPATH
+# Ensure the project root directory is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -36,19 +36,19 @@ def create_base_pilot_for_training(
     seed: int = 42,
 ):
     """
-    Crea el piloto base (congelado) con el que interactuará el copiloto durante el entrenamiento.
+    Create the base (frozen) pilot that the copilot will interact with during training.
 
     Args:
-        pilot_type: Tipo de piloto ("noisy", "laggy", "heuristic", "optimal").
-        corner_name: Nombre del cono objetivo ("cone_1", etc.).
-        noise_std: Desviación típica del ruido gaussiano para NoisyPilot.
-        lag_prob: Probabilidad de retardo/repetición para LaggyPilot.
-        heuristic_mode: Modo de HeuristicPilot ("proportional" u "open_loop").
-        optimal_model_path: Ruta al checkpoint entrenado para OptimalPilot.
-        seed: Semilla para reproducibilidad de los pilotos estocásticos.
+        pilot_type: Pilot type ("noisy", "laggy", "heuristic", "optimal").
+        corner_name: Target cone name ("cone_1", etc.).
+        noise_std: Standard deviation of Gaussian noise for NoisyPilot.
+        lag_prob: Delay/repetition probability for LaggyPilot.
+        heuristic_mode: HeuristicPilot mode ("proportional" or "open_loop").
+        optimal_model_path: Path to the trained checkpoint for OptimalPilot.
+        seed: Random seed for reproducibility of stochastic pilots.
 
     Returns:
-        BasePilot: Instancia del piloto congelado listo para usar en SharedAutonomyEnv.
+        BasePilot: Frozen pilot instance ready for use in SharedAutonomyEnv.
     """
     pilot_type = pilot_type.lower()
 
@@ -57,12 +57,12 @@ def create_base_pilot_for_training(
 
     elif pilot_type == "optimal":
         if optimal_model_path is None:
-            # Si no se indica ruta, se usa HeuristicPilot como aproximación óptima determinista
+            # If no path is provided, use HeuristicPilot as a deterministic optimal approximation
             return HeuristicPilot(mode="proportional", corner_name=corner_name)
         return OptimalPilot(checkpoint_path=optimal_model_path)
 
     elif pilot_type == "noisy":
-        # Piloto de referencia base sobre el cual aplicar ruido
+        # Base reference pilot on top of which noise is applied
         if optimal_model_path is not None and os.path.exists(optimal_model_path):
             base_pilot = OptimalPilot(checkpoint_path=optimal_model_path)
         else:
@@ -70,7 +70,7 @@ def create_base_pilot_for_training(
         return NoisyPilot(optimal_pilot=base_pilot, sigma=noise_std, seed=seed)
 
     elif pilot_type == "laggy":
-        # Piloto de referencia base sobre el cual aplicar latencia
+        # Base reference pilot on top of which latency is applied
         if optimal_model_path is not None and os.path.exists(optimal_model_path):
             base_pilot = OptimalPilot(checkpoint_path=optimal_model_path)
         else:
@@ -206,7 +206,7 @@ def parse_args():
 def train():
     args = parse_args()
 
-    # Configuración de rutas por defecto
+    # Default path configuration
     if args.save_path is None:
         save_dir = os.path.join(project_root, "models")
         os.makedirs(save_dir, exist_ok=True)
@@ -238,7 +238,7 @@ def train():
     print(f" TensorBoard logdir:       {args.tensorboard_log}")
     print(f"{'='*70}\n")
 
-    # 1. Crear piloto congelado
+    # 1. Create frozen pilot
     pilot = create_base_pilot_for_training(
         pilot_type=args.pilot_type,
         corner_name=args.corner,
@@ -249,21 +249,21 @@ def train():
         seed=args.seed,
     )
 
-    # 2. Instanciar entorno de autonomía compartida
+    # 2. Instantiate shared autonomy environment
     env = SharedAutonomyEnv(
         pilot=pilot,
-        copilot=None,  # El algoritmo RL actuará como copiloto en entrenamiento
+        copilot=None,  # The RL algorithm will act as the copilot during training
         max_episode_steps=args.max_episode_steps,
         corner_name=args.corner,
         reward_mode=args.reward_mode,
         lambda_intervention=args.lambda_intervention,
         residual_scale=args.residual_scale,
-        include_pilot_action_in_obs=True,  # Obs extendida: [obs(11), a_h(4)] -> 15 dimensiones
+        include_pilot_action_in_obs=True,  # Extended obs: [obs(11), a_h(4)] -> 15 dimensions
         enable_trajectory_logging=False,
         verbose=0,
     )
 
-    # 3. Configurar algoritmo de aprendizaje por refuerzo
+    # 3. Configure reinforcement learning algorithm
     try:
         from stable_baselines3 import PPO, SAC
     except ImportError:
@@ -309,7 +309,7 @@ def train():
     else:
         raise ValueError(f"Algoritmo no soportado: {algo_name}")
 
-    # 4. Bucle de aprendizaje
+    # 4. Learning loop
     print(f"Comenzando entrenamiento de {algo_name.upper()}...")
     try:
         model.learn(
@@ -320,7 +320,7 @@ def train():
     except KeyboardInterrupt:
         print("\nEntrenamiento interrumpido manualmente por el usuario.")
 
-    # 5. Guardar modelo entrenado
+    # 5. Save trained model
     model.save(args.save_path)
     print(f"\n¡Entrenamiento finalizado! Modelo de copiloto guardado en: {args.save_path}")
 

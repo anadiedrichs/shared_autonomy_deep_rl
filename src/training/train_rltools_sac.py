@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Entrenamiento del piloto óptimo continuo con SAC (RLtools).
+Continuous optimal pilot training with SAC (RLtools).
 
-Entrena una política continua con Soft Actor-Critic (SAC) usando la interfaz Python
-de RLtools sobre CornerEnvContinuous, y exporta la política entrenada directamente como
-un header de C/C++ (.h) para despliegue embebido en el Crazyflie.
+Trains a continuous policy with Soft Actor-Critic (SAC) using the RLtools Python
+interface on CornerEnvContinuous, and exports the trained policy directly as
+a C/C++ header (.h) for embedded deployment on the Crazyflie.
 """
 
 import argparse
 import os
 import sys
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -26,9 +26,9 @@ except ImportError:
 
 def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000):
     """
-    Crea la factoría del entorno requerida por la interfaz de RLtools.
-    Utiliza el patrón singleton/persistente para evitar múltiples inicializaciones
-    de Webots Supervisor en el mismo proceso de Python.
+    Create the environment factory required by the RLtools interface.
+    Uses the singleton/persistent pattern to avoid multiple Webots Supervisor
+    initializations within the same Python process.
     """
     _env_instance = None
 
@@ -61,19 +61,19 @@ def train_rltools_sac(
     verbose: bool = True,
 ):
     """
-    Ejecuta el ciclo de entrenamiento de SAC con RLtools.
+    Execute the SAC training loop with RLtools.
 
     Args:
-        max_steps: Número máximo de pasos de entrenamiento a ejecutar.
-        seed: Semilla para reproducibilidad numérica.
-        corner_name: Identificador DEF del cono objetivo en Webots.
-        max_episode_steps: Límite máximo de pasos por episodio.
-        header_save_path: Ruta del archivo header C (.h) para exportar la política entrenada.
-        log_dir: Directorio para guardar logs y métricas de TensorBoard.
-        verbose: Si es True, imprime progreso periódico en consola.
+        max_steps: Maximum number of training steps to execute.
+        seed: Random seed for numerical reproducibility.
+        corner_name: DEF identifier of the target cone in Webots.
+        max_episode_steps: Maximum step limit per episode.
+        header_save_path: Path to the C header file (.h) to export the trained policy.
+        log_dir: Directory to save TensorBoard logs and metrics.
+        verbose: If True, prints periodic progress to the console.
 
     Returns:
-        tuple: (estado final del entrenamiento, código fuente C del header exportado).
+        tuple: (final training state, C source code of the exported header).
     """
     try:
         from rltools import SAC
@@ -85,7 +85,7 @@ def train_rltools_sac(
 
     os.makedirs(os.path.dirname(os.path.abspath(header_save_path)), exist_ok=True)
 
-    # Configuración de TensorBoard y registro de hiperparámetros
+    # TensorBoard setup and hyperparameter logging
     writer = None
     if log_dir is not None:
         try:
@@ -152,7 +152,7 @@ def train_rltools_sac(
 
 
 def parse_args():
-    """Analizador de argumentos de línea de comandos."""
+    """Command-line argument parser."""
     parser = argparse.ArgumentParser(
         description="Entrenamiento del piloto óptimo con SAC (RLtools) y exportación a header C."
     )

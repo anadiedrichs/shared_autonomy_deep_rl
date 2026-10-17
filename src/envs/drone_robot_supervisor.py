@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Entorno base de Gymnasium y controlador Webots Supervisor para cuadricóptero Crazyflie.
+Base Gymnasium environment and Webots Supervisor controller for the Crazyflie quadrotor.
 
-Adaptación a espacio de acciones continuo y 11 observaciones continuas basada en el
-trabajo previo de tesis (Diedrichs, 2025, drone-deep-rl).
+Adaptation to a continuous action space and 11 continuous observations based on
+prior thesis work (Diedrichs, 2025, drone-deep-rl).
 """
 
 import os
@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover
     spaces = _DummySpaces
 
 class _DummySupervisor:
-    """Clase dummy que emula la API mínima de Webots Supervisor para pruebas fuera del simulador."""
+    """Dummy class that emulates the minimal Webots Supervisor API for testing outside the simulator."""
 
     def __init__(self):
         pass
@@ -60,7 +60,7 @@ class _DummySupervisor:
 
 
 class _DummyKeyboard:
-    """Clase dummy que emula el dispositivo de teclado de Webots."""
+    """Dummy class that emulates the Webots keyboard device."""
 
     def __init__(self):
         pass
@@ -76,7 +76,7 @@ if os.environ.get("WEBOTS_MOCK", "0") == "1":
     Supervisor = _DummySupervisor
     Keyboard = _DummyKeyboard
 else:
-    # Auto-detección de WEBOTS_HOME y biblioteca controller de Webots si no está en PYTHONPATH
+    # Auto-detection of WEBOTS_HOME and Webots controller library if not in PYTHONPATH
     _webots_candidates = [
         os.environ.get("WEBOTS_HOME", ""),
         "/usr/local/webots",
@@ -104,41 +104,41 @@ from src.utils.utilities import normalize_to_range
 
 class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     """
-    Entorno base Gymnasium acoplado a Webots para el cuadricóptero Crazyflie.
+    Base Gymnasium environment coupled with Webots for the Crazyflie quadrotor.
 
-    Espacio de acciones continuo (4 dimensiones en [-1.0, 1.0]):
-        - a[0]: comando de avance longitudinal vx (normalizado)
-        - a[1]: comando de desplazamiento lateral vy (normalizado)
-        - a[2]: comando de velocidad angular de guiñada yaw_rate (normalizado)
-        - a[3]: comando de velocidad vertical / variación de altura (normalizado)
+    Continuous action space (4 dimensions in [-1.0, 1.0]):
+        - a[0]: forward longitudinal velocity command vx (normalized)
+        - a[1]: lateral displacement velocity command vy (normalized)
+        - a[2]: yaw angular velocity command yaw_rate (normalized)
+        - a[3]: vertical velocity / altitude variation command (normalized)
 
-    Espacio de observaciones continuo (11 dimensiones en [-1.0, 1.0]):
-        - [0]: roll (rad normalizado desde [-pi, pi])
-        - [1]: pitch (rad normalizado desde [-pi/2, pi/2])
-        - [2]: yaw_rate (rad/s normalizado desde [-pi, pi])
-        - [3]: v_x (m/s en marco del dron normalizado desde [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
-        - [4]: v_y (m/s en marco del dron normalizado desde [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
-        - [5]: v_z (m/s velocidad vertical normalizada desde [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
-        - [6]: altitude (metros normalizado desde [0.1, 5.0])
-        - [7]: range_front (mm normalizado desde [2.0, 2000.0])
-        - [8]: range_back (mm normalizado desde [2.0, 2000.0])
-        - [9]: range_right (mm normalizado desde [2.0, 2000.0])
-        - [10]: range_left (mm normalizado desde [2.0, 2000.0])
+    Continuous observation space (11 dimensions in [-1.0, 1.0]):
+        - [0]: roll (rad normalized from [-pi, pi])
+        - [1]: pitch (rad normalized from [-pi/2, pi/2])
+        - [2]: yaw_rate (rad/s normalized from [-pi, pi])
+        - [3]: v_x (m/s in drone frame normalized from [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
+        - [4]: v_y (m/s in drone frame normalized from [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
+        - [5]: v_z (m/s vertical velocity normalized from [-MAX_OBS_VELOCITY, MAX_OBS_VELOCITY])
+        - [6]: altitude (meters normalized from [0.1, 5.0])
+        - [7]: range_front (mm normalized from [2.0, 2000.0])
+        - [8]: range_back (mm normalized from [2.0, 2000.0])
+        - [9]: range_right (mm normalized from [2.0, 2000.0])
+        - [10]: range_left (mm normalized from [2.0, 2000.0])
     """
 
-    # Límites físicos de vuelo y control
-    MAX_FORWARD_VELOCITY = 0.09  # Velocidad longitudinal máxima en m/s
-    MAX_LATERAL_VELOCITY = 0.09  # Velocidad lateral máxima en m/s
-    MAX_YAW_RATE = 0.5  # Velocidad angular de guiñada máxima en rad/s (dinámica)
-    MAX_VERTICAL_VELOCITY = 0.05  # Velocidad máxima de ascenso/descenso en m/s
-    MAX_OBS_VELOCITY = 1.0  # Rango físico de velocidad para normalización de observaciones (m/s)
+    # Physical flight and control bounds
+    MAX_FORWARD_VELOCITY = 0.09  # Maximum longitudinal velocity in m/s
+    MAX_LATERAL_VELOCITY = 0.09  # Maximum lateral velocity in m/s
+    MAX_YAW_RATE = 0.5  # Maximum yaw angular velocity in rad/s (dynamics)
+    MAX_VERTICAL_VELOCITY = 0.05  # Maximum ascent/descent velocity in m/s
+    MAX_OBS_VELOCITY = 1.0  # Physical velocity range for observation normalization (m/s)
 
-    # Parámetros de altitud
-    MIN_HEIGHT = 0.20  # Altura mínima permitida en vuelo (metros)
-    MAX_HEIGHT = 0.70  # Altura máxima permitida en vuelo (metros)
-    HEIGHT_INITIAL = 0.50  # Altura objetivo tras despegue (metros)
-    HEIGHT_INCREASE = 0.05  # Incremento en rampa de despegue (metros)
-    WAITING_TIME = 1.0  # Tiempo de estabilización en segundos tras despegue
+    # Altitude parameters
+    MIN_HEIGHT = 0.20  # Minimum allowed altitude in flight (meters)
+    MAX_HEIGHT = 0.70  # Maximum allowed altitude in flight (meters)
+    HEIGHT_INITIAL = 0.50  # Target altitude after take-off (meters)
+    HEIGHT_INCREASE = 0.05  # Increment in take-off ramp (meters)
+    WAITING_TIME = 1.0  # Stabilization time in seconds after take-off
 
     def __init__(
         self,
@@ -147,12 +147,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         verbose: int = 1,
     ):
         """
-        Inicializa el supervisor del robot Crazyflie.
+        Initializes the Crazyflie robot supervisor.
 
         Args:
-            max_episode_steps: Límite máximo de pasos por episodio (por defecto 1000).
-            enable_trajectory_logging: Habilita el guardado en disco de la trayectoria CSV.
-            verbose: Nivel de detalle en consola (0: silencioso para RL masivo, 1: transiciones clave y despegue, 2: depuración extendida).
+            max_episode_steps: Maximum step limit per episode (default 1000).
+            enable_trajectory_logging: Enables saving the CSV trajectory to disk.
+            verbose: Console detail level (0: silent for massive RL, 1: key transitions and take-off, 2: extended debug).
         """
         super().__init__()
         self.max_episode_steps = max_episode_steps
@@ -160,7 +160,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.verbose = int(verbose)
         self.render_mode = None
 
-        # Definición formal de espacios Gymnasium
+        # Formal definition of Gymnasium spaces
         if spaces is not None:
             self.action_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(4,), dtype=np.float32
@@ -174,7 +174,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
                 max_episode_steps=max_episode_steps,
             )
 
-        # Variables de estado y odometría
+        # State and odometry variables
         self.timestep = int(self.getBasicTimeStep()) if hasattr(self, "getBasicTimeStep") else 32
         self.episode_step = 0
         self.episode_score = 0.0
@@ -182,7 +182,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.dt = float(self.timestep) / 1000.0
         self.past_time = 0.0
 
-        # Posiciones globales
+        # Global positions
         self.x_global = 0.0
         self.y_global = 0.0
         self.z_global = 0.0
@@ -192,7 +192,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.x_pos_initial = 0.0
         self.y_pos_initial = 0.0
 
-        # Velocidades y orientaciones
+        # Velocities and orientations
         self.v_x = 0.0
         self.v_y = 0.0
         self.v_z = 0.0
@@ -204,13 +204,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.lineal_velocity = np.zeros(3, dtype=np.float32)
         self.angular_velocity = np.zeros(3, dtype=np.float32)
 
-        # Sensores de distancia ToF (en milímetros)
+        # ToF distance sensors (in millimeters)
         self.dist_front = 2000.0
         self.dist_back = 2000.0
         self.dist_right = 2000.0
         self.dist_left = 2000.0
 
-        # Estado de vuelo y control
+        # Flight and control state
         self.height_desired = self.HEIGHT_INITIAL
         self.the_drone_took_off = False
         self.timestamp_take_off = 0.0
@@ -220,11 +220,11 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.current_action = np.zeros(4, dtype=np.float32)
         self.prev_action = np.zeros(4, dtype=np.float32)
 
-        # Registro de trayectorias
+        # Trajectory logging
         self.drone_trajectory_path = None
         self.drone_trajectory_file = None
 
-        # Controladores y dispositivos
+        # Controllers and devices
         self.PID_crazyflie = None
         self.motors = [None for _ in range(4)]
         self.imu = None
@@ -243,7 +243,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def _initialization(self):
         """
-        Inicializa dispositivos, sensores, actuadores y controlador PID del Crazyflie.
+        Initializes devices, sensors, actuators, and the PID controller of the Crazyflie.
         """
         if hasattr(self, "getBasicTimeStep"):
             self.timestep = int(self.getBasicTimeStep())
@@ -253,12 +253,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.dt = float(self.timestep) / 1000.0
         self.PID_crazyflie = pid_velocity_fixed_height_controller()
 
-        # Teclado para eventual teleoperación manual
+        # Keyboard for optional manual teleoperation
         self._keyboard = Keyboard()
         if hasattr(self._keyboard, "enable"):
             self._keyboard.enable(self.timestep)
 
-        # Sensores integrados en el nodo Crazyflie
+        # Sensors integrated into the Crazyflie node
         self.imu = self.getDevice("inertial_unit") if hasattr(self, "getDevice") else None
         if self.imu is not None and hasattr(self.imu, "enable"):
             self.imu.enable(self.timestep)
@@ -291,15 +291,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.range_right is not None and hasattr(self.range_right, "enable"):
             self.range_right.enable(self.timestep)
 
-        # Referencia al robot Crazyflie
+        # Reference to the Crazyflie robot
         self.robot = self.getFromDef("crazyflie") if hasattr(self, "getFromDef") else None
 
-        # Motores
+        # Motors
         self._setup_motors()
 
     def _setup_motors(self):
         """
-        Configura los motores del cuadricóptero en modo control de velocidad.
+        Configures the quadrotor motors in velocity control mode.
         """
         if not hasattr(self, "getDevice"):
             return
@@ -315,8 +315,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def _setup_motors_velocity(self, motor_power: list[float] | np.ndarray):
         """
-        Aplica la potencia calculada a cada uno de los 4 motores del Crazyflie.
-        Los motores 0 (m1) y 2 (m3) requieren inversión de signo por su sentido de giro.
+        Applies the computed power to each of the 4 Crazyflie motors.
+        Motors 0 (m1) and 2 (m3) require sign inversion due to their rotation direction.
         """
         if self.motors[0] is None:
             return
@@ -329,10 +329,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def take_off(self):
         """
-        Máquina de estados para realizar el despegue automático y estabilización del dron.
-        Asciende progresivamente hasta superar MAX_HEIGHT y espera WAITING_TIME segundos.
+        State machine to perform automatic take-off and stabilization of the drone.
+        Ascends progressively until exceeding MAX_HEIGHT and waits WAITING_TIME seconds.
         """
-        # Si no hay sensores reales disponibles (modo mock o testing), evitar bucle infinito
+        # If no real sensors are available (mock or testing mode), avoid infinite loop
         if self.gps is None or self.imu is None:
             self.the_drone_took_off = True
             self.alt = self.HEIGHT_INITIAL
@@ -386,7 +386,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def transform_velocity(self, v_x_global: float, v_y_global: float) -> tuple[float, float]:
         """
-        Transforma las velocidades globales del plano XY al marco de referencia del cuerpo del dron (body-fixed frame).
+        Transforms global XY plane velocities to the drone's body-fixed reference frame.
         """
         cos_yaw = cos(self.yaw)
         sin_yaw = sin(self.yaw)
@@ -396,7 +396,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def update_lineal_velocity(self):
         """
-        Actualiza las coordenadas globales y calcula las velocidades lineales en los ejes X, Y y Z.
+        Updates global coordinates and computes linear velocities along the X, Y, and Z axes.
         """
         if self.gps is not None and hasattr(self.gps, "getValues"):
             pos = self.gps.getValues()
@@ -422,10 +422,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def get_observations(self) -> np.ndarray:
         """
-        Lee y normaliza los datos de los sensores al rango [-1.0, 1.0].
+        Reads and normalizes sensor data to the range [-1.0, 1.0].
 
         Returns:
-            np.ndarray: Vector de 11 valores continuos:
+            np.ndarray: 11-element continuous vector:
                 [roll, pitch, yaw_rate, v_x, v_y, v_z, altitude, range_front, range_back, range_right, range_left]
         """
         if self.first_time:
@@ -444,23 +444,23 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.dt <= 0:
             self.dt = float(self.timestep) / 1000.0
 
-        # Lectura de orientación IMU
+        # Read IMU orientation
         if self.imu is not None and hasattr(self.imu, "getRollPitchYaw"):
             rpy = self.imu.getRollPitchYaw()
             self.roll = float(rpy[0])
             self.pitch = float(rpy[1])
             self.yaw = float(rpy[2])
 
-        # Lectura de velocidad angular Gyro
+        # Read Gyro angular velocity
         if self.gyro is not None and hasattr(self.gyro, "getValues"):
             gyro_vals = self.gyro.getValues()
             self.yaw_rate = float(gyro_vals[2])
             self.angular_velocity = np.array(gyro_vals, dtype=np.float32)
 
-        # Actualización de velocidades lineales
+        # Update linear velocities
         self.update_lineal_velocity()
 
-        # Sensores de distancia ToF
+        # ToF distance sensors
         if self.range_front is not None and hasattr(self.range_front, "getValue"):
             self.dist_front = float(self.range_front.getValue())
         if self.range_back is not None and hasattr(self.range_back, "getValue"):
@@ -470,7 +470,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.range_left is not None and hasattr(self.range_left, "getValue"):
             self.dist_left = float(self.range_left.getValue())
 
-        # Normalización de variables a [-1.0, 1.0]
+        # Normalize variables to [-1.0, 1.0]
         roll_norm = normalize_to_range(self.roll, -pi, pi, -1.0, 1.0, clip=True)
         pitch_norm = normalize_to_range(self.pitch, -pi / 2.0, pi / 2.0, -1.0, 1.0, clip=True)
         yaw_rate_norm = normalize_to_range(self.yaw_rate, -pi, pi, -1.0, 1.0, clip=True)
@@ -505,24 +505,24 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         return obs
 
     def get_default_observation(self) -> np.ndarray:
-        """Devuelve un vector de ceros con la dimensión del espacio de observación."""
+        """Returns a zero vector with the dimension of the observation space."""
         dim = self.observation_space.shape[0] if hasattr(self, "observation_space") else 11
         return np.zeros(dim, dtype=np.float32)
 
     def _denormalize_action(self, action: np.ndarray) -> tuple[float, float, float, float]:
         """
-        Convierte el vector de acción normalizado [-1.0, 1.0]^4 a comandos físicos reales:
-        - vx_cmd (m/s): velocidad longitudinal deseada
-        - vy_cmd (m/s): velocidad lateral deseada
-        - yaw_rate_cmd (rad/s): velocidad angular de guiñada deseada
-        - desired_altitude (m): altitud actualizada según velocidad vertical integrada
+        Converts the normalized action vector [-1.0, 1.0]^4 into physical commands:
+        - vx_cmd (m/s): desired longitudinal velocity
+        - vy_cmd (m/s): desired lateral velocity
+        - yaw_rate_cmd (rad/s): desired yaw angular velocity
+        - desired_altitude (m): updated altitude according to integrated vertical velocity
         """
         act = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
         vx_cmd = float(act[0] * self.MAX_FORWARD_VELOCITY)
         vy_cmd = float(act[1] * self.MAX_LATERAL_VELOCITY)
         yaw_rate_cmd = float(act[2] * self.MAX_YAW_RATE)
 
-        # Variación relativa de altura (Opción 2: velocidad vertical integrada con dt)
+        # Relative altitude variation (Option 2: vertical velocity integrated with dt)
         delta_h = float(act[3] * self.MAX_VERTICAL_VELOCITY * self.dt)
         self.height_desired = float(
             np.clip(self.height_desired + delta_h, self.MIN_HEIGHT, self.MAX_HEIGHT)
@@ -532,10 +532,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def step(self, action: np.ndarray):
         """
-        Avanza la simulación un paso aplicando la acción continua indicada.
+        Advances the simulation by one step applying the specified continuous action.
 
         Args:
-            action (np.ndarray): Vector continuo de 4 componentes en [-1.0, 1.0].
+            action (np.ndarray): 4-component continuous vector in [-1.0, 1.0].
 
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
@@ -545,7 +545,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
         vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd = self._denormalize_action(action)
 
-        # Cálculo de potencias con el PID de velocidad y altitud
+        # Compute motor power with the velocity and altitude PID
         if self.PID_crazyflie is not None:
             motor_power = self.PID_crazyflie.pid(
                 self.dt,
@@ -564,29 +564,29 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
         super().step(self.timestep)
 
-        # Lectura de nuevos estados
+        # Read new states
         obs = self.get_observations()
         self.past_time = self.getTime() if hasattr(self, "getTime") else (self.past_time + self.dt)
 
-        # Evaluación de fin de episodio y recompensa
+        # Evaluate episode termination and reward
         reward = self.get_reward()
         self.episode_score += reward
         terminated = self.is_done()
         truncated = self.episode_step >= self.max_episode_steps
         info = self.get_info()
 
-        # Registro opcional de trayectoria en CSV
+        # Optional trajectory logging to CSV
         if self.enable_trajectory_logging and self.drone_trajectory_file is not None:
             self.record_trajectory()
 
-        # Almacenar acción actual como previa para el siguiente paso
+        # Store current action as previous for the next step
         self.prev_action = np.copy(self.current_action)
 
         return obs, reward, terminated, truncated, info
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """
-        Reinicia la simulación de Webots y el estado interno del entorno Gymnasium.
+        Resets the Webots simulation and the internal state of the Gymnasium environment.
 
         Returns:
             tuple: (observation, info)
@@ -617,7 +617,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
         self.take_off()
 
-        # Inicialización de archivo de trayectoria si el logging está activado
+        # Initialize trajectory file if logging is enabled
         if self.enable_trajectory_logging and self.drone_trajectory_path is not None:
             timestamp = int(time.time())
             file_name = f"trajectory_x_{self.x_global:.2f}_y_{self.y_global:.2f}_t_{timestamp}.csv"
@@ -628,13 +628,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         return obs, info
 
     def set_trajectory_path(self, path_dir: str):
-        """Establece el directorio de guardado para los archivos de trayectoria CSV."""
+        """Sets the directory path for saving CSV trajectory files."""
         self.drone_trajectory_path = path_dir
         if not os.path.exists(path_dir):
             os.makedirs(path_dir, exist_ok=True)
 
     def set_trajectory_file_name(self, file_name: str):
-        """Configura el archivo CSV y escribe su encabezado."""
+        """Configures the CSV file and writes its header."""
         if self.drone_trajectory_path is None:
             return
         self.drone_trajectory_file = os.path.join(self.drone_trajectory_path, file_name)
@@ -642,7 +642,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             f.write("time,x,y,z\n")
 
     def record_trajectory(self):
-        """Registra la posición actual (tiempo, x, y, z) en el archivo CSV configurado."""
+        """Records the current position (time, x, y, z) in the configured CSV file."""
         if self.drone_trajectory_file is None:
             return
         curr_time = self.getTime() if hasattr(self, "getTime") else 0.0
@@ -650,7 +650,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             f.write(f"{curr_time},{self.x_global:.4f},{self.y_global:.4f},{self.z_global:.4f}\n")
 
     def get_info(self) -> dict:
-        """Diccionario de información adicional del paso actual."""
+        """Additional information dictionary for the current step."""
         return {
             "is_success": self.is_success,
             "altitude": self.alt,
@@ -660,20 +660,20 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     def get_reward(self) -> float:
         """
-        Recompensa base. Se sobreescribe en entornos específicos como CornerEnvContinuous.
+        Base reward. Overridden in specific environments such as CornerEnvContinuous.
         """
         return 0.0
 
     def is_done(self) -> bool:
         """
-        Condición de parada base. Se sobreescribe en entornos específicos como CornerEnvContinuous.
+        Base stopping condition. Overridden in specific environments such as CornerEnvContinuous.
         """
         return False
 
     def render(self, mode: str = "human"):
-        """Renderizado pasivo administrado por la GUI de Webots."""
+        """Passive rendering managed by the Webots GUI."""
         pass
 
     def close(self):
-        """Cierre ordenado de recursos del entorno."""
+        """Cleanly closes environment resources."""
         pass

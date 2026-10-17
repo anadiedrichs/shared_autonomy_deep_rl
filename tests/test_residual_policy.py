@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para la clase ResidualPolicy y AssistedPilot.
+Unit tests for the ResidualPolicy and AssistedPilot classes.
 """
 
 import os
 import sys
 import numpy as np
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -17,7 +17,7 @@ from src.pilots.base_pilot import BasePilot
 
 
 class MockBasePilot(BasePilot):
-    """Piloto simulado para pruebas."""
+    """Simulated pilot for testing."""
 
     def __init__(self, action: np.ndarray):
         self.action = np.asarray(action, dtype=np.float32)
@@ -31,7 +31,7 @@ class MockBasePilot(BasePilot):
 
 
 def test_residual_policy_dummy_default():
-    """Valida que un ResidualPolicy sin modelo devuelva ceros por defecto."""
+    """Validate that a ResidualPolicy without a model returns zeros by default."""
     copilot = ResidualPolicy(backend="dummy")
     obs = np.zeros(11, dtype=np.float32)
     p_act = np.array([0.5, -0.5, 0.0, 0.0], dtype=np.float32)
@@ -42,10 +42,10 @@ def test_residual_policy_dummy_default():
 
 
 def test_residual_policy_with_callable():
-    """Valida la inferencia con una función/modelo invocable en memoria."""
-    # Retorna la mitad del vector de entrada recortado a 4 dimensiones
+    """Validate inference with an in-memory callable function/model."""
+    # Return a constant 4-dimensional vector after checking input dimension
     def custom_model(copilot_obs):
-        assert copilot_obs.shape == (15,)  # 11 de obs + 4 de pilot_action
+        assert copilot_obs.shape == (15,)  # 11 from obs + 4 from pilot_action
         return np.ones(4, dtype=np.float32) * 0.4
 
     copilot = ResidualPolicy(model=custom_model, backend="dummy", residual_scale=1.0)
@@ -57,11 +57,11 @@ def test_residual_policy_with_callable():
 
 
 def test_residual_policy_scaling_and_clipping():
-    """Valida el factor de escala residual y el recorte a [-1, 1]."""
+    """Validate the residual scale factor and clipping to [-1, 1]."""
     def saturated_model(copilot_obs):
         return np.array([2.0, -3.0, 0.5, -0.5], dtype=np.float32)
 
-    # Con escala 0.5
+    # With scale 0.5
     copilot = ResidualPolicy(model=saturated_model, backend="dummy", residual_scale=0.5)
     obs = np.zeros(11, dtype=np.float32)
     p_act = np.zeros(4, dtype=np.float32)
@@ -75,7 +75,7 @@ def test_residual_policy_scaling_and_clipping():
 
 
 def test_backend_detection_from_extension():
-    """Valida la auto-detección del backend según la extensión del checkpoint."""
+    """Validate backend auto-detection based on checkpoint extension."""
     assert ResidualPolicy._detect_backend("models/copilot.zip") == "sb3_ppo"
     assert ResidualPolicy._detect_backend("models/copilot_sac.zip") == "sb3_sac"
     assert ResidualPolicy._detect_backend("models/copilot.h") == "rltools_sac"
@@ -83,7 +83,7 @@ def test_backend_detection_from_extension():
 
 
 def test_assisted_pilot_composition():
-    """Valida que AssistedPilot componga aditivamente acción de piloto y residual."""
+    """Validate that AssistedPilot additively composes pilot and residual actions."""
     p_act = np.array([0.7, -0.2, 0.0, 0.3], dtype=np.float32)
     base_pilot = MockBasePilot(p_act)
 
@@ -96,18 +96,18 @@ def test_assisted_pilot_composition():
     obs = np.zeros(11, dtype=np.float32)
     a_composed = assisted.get_action(obs)
 
-    # Composición: [0.7+0.5=1.2->1.0, -0.2+0.1=-0.1, 0.0+0.0=0.0, 0.3-0.1=0.2]
+    # Composition: [0.7+0.5=1.2->1.0, -0.2+0.1=-0.1, 0.0+0.0=0.0, 0.3-0.1=0.2]
     assert np.isclose(a_composed[0], 1.0)
     assert np.isclose(a_composed[1], -0.1)
     assert np.isclose(a_composed[2], 0.0)
     assert np.isclose(a_composed[3], 0.2)
 
-    # Validar alias choose_action
+    # Validate choose_action alias
     act, states = assisted.choose_action(obs)
     assert np.allclose(act, a_composed)
     assert states == []
 
-    # Validar propagación de reset
+    # Validate reset propagation
     assisted.reset()
     assert base_pilot.reset_called is True
 

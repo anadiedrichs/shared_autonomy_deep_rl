@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests unitarios para compare_pilots.py (Fase 6: Análisis Comparativo).
+Unit tests for compare_pilots.py (Phase 6: Comparative Analysis).
 """
 
 import os
@@ -9,7 +9,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 
-# Asegurar que la raíz del proyecto esté en el PYTHONPATH
+# Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -38,10 +38,10 @@ def _create_mock_eval_csv(path: str, successes: list[bool], terminations: list[s
 
 
 def test_load_and_calculate_metrics():
-    """Valida la carga de CSV y cálculo de tasas de éxito, colisión y timeout."""
+    """Validate CSV loading and computation of success, collision, and timeout rates."""
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_file = os.path.join(tmpdir, "eval_test.csv")
-        # 10 episodios: 7 éxitos, 2 caídas (colisión), 1 timeout
+        # 10 episodes: 7 successes, 2 falls (collision), 1 timeout
         successes = [True] * 7 + [False] * 3
         terminations = ["goal"] * 7 + ["fall", "out_of_bounds", "timeout"]
         _create_mock_eval_csv(csv_file, successes, terminations)
@@ -59,7 +59,7 @@ def test_load_and_calculate_metrics():
 
 
 def test_compare_multiple_pilots_from_csvs():
-    """Valida la agregación tabular de múltiples pilotos."""
+    """Validate tabular aggregation of multiple pilots."""
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_p1 = os.path.join(tmpdir, "eval_p1.csv")
         csv_p2 = os.path.join(tmpdir, "eval_p2.csv")
@@ -77,7 +77,7 @@ def test_compare_multiple_pilots_from_csvs():
 
 
 def test_generate_comparison_plots():
-    """Valida la generación física de imágenes de reporte PNG."""
+    """Validate physical generation of PNG report images."""
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_p1 = os.path.join(tmpdir, "eval_p1.csv")
         _create_mock_eval_csv(csv_p1, [True, False], ["goal", "fall"])
@@ -85,7 +85,7 @@ def test_generate_comparison_plots():
         df_summary = compare_pilots_from_csvs([csv_p1], labels=["P1"])
         plots = generate_comparison_plots(df_summary, output_dir=tmpdir)
 
-        # Si matplotlib está instalado, debe generar 2 imágenes
+        # If matplotlib is installed, it should generate 2 images
         for p in plots:
             assert os.path.exists(p)
             assert p.endswith(".png")
