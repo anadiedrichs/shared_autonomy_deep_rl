@@ -1,73 +1,76 @@
+*Read this in other languages: [Español](README.es.md)*
+
 # Shared Autonomy Deep RL
 
-Framework de integración entre [RLtools](https://github.com/rl-tools/rl-tools) y el simulador
-[Webots](https://cyberbotics.com/) para implementar un sistema de teleoperación asistida
-(autonomía compartida) de cuadricópteros Crazyflie, mediante aprendizaje de políticas
-residuales en espacio de acciones continuo.
+Integration framework between [RLtools](https://github.com/rl-tools/rl-tools) and the
+[Webots](https://cyberbotics.com/) simulator to implement an assisted teleoperation
+(shared autonomy) system for Crazyflie quadrotors via residual policy learning in a
+continuous action space.
 
-Continuación del trabajo de tesis de Ana Laura Diedrichs, *"Teleoperación asistida de
-cuadricópteros mediante aprendizaje por refuerzo profundo"* (CEIA-FIUBA, 2025,
-[Zenodo](https://doi.org/10.5281/zenodo.16914761)), y del repositorio
-[drone-deep-rl](https://github.com/anadiedrichs/drone-deep-rl), en el marco del proyecto
-de investigación *"Autonomía Compartida para UAVs: desarrollo Sim-to-Real con Webots y
-RLtools"* (Universidad Europea).
+Continuation of the thesis work by Ana Laura Diedrichs, *"Teleoperación asistida de
+cuadricópteros mediante aprendizaje por refuerzo profundo"* (*"Assisted teleoperation of
+quadrotors via deep reinforcement learning"*, CEIA-FIUBA, 2025,
+[Zenodo](https://doi.org/10.5281/zenodo.16914761)), and the
+[drone-deep-rl](https://github.com/anadiedrichs/drone-deep-rl) repository, within the
+framework of the research project *"Shared Autonomy for UAVs: Sim-to-Real Development with
+Webots and RLtools"* (Universidad Europea).
 
-> Estado: **esqueleto inicial**. Los módulos en `src/` contienen la interfaz y los
-> docstrings de diseño, pendientes de implementación. Ver `docs/architecture.md` para el
-> detalle de las decisiones de arquitectura tomadas antes de portar el código.
+> Status: **initial skeleton**. The modules in `src/` contain the interface and design
+> docstrings, pending implementation. See `docs/architecture.md` for details on the
+> architectural decisions made prior to porting the code.
 
-## Decisiones de arquitectura (resumen)
+## Architectural Decisions (Summary)
 
-- **Stack**: Python puro. Webots + Gymnasium, sin controlador C++ nativo por ahora.
-- **Piloto óptimo**: 100% aprendizaje por refuerzo. Se entrena con dos algoritmos para
-  poder comparar:
-  - [`rltools`](https://pypi.org/project/rltools/) (wrapper Python de RLtools) → SAC.
-  - [`stable-baselines3`](https://github.com/DLR-RM/stable-baselines3) → PPO, como
-    baseline "framework tradicional".
-  No se usa aprendizaje por imitación en esta iteración (no hay joystick disponible para
-  capturar demostraciones continuas de buena calidad; queda como trabajo futuro).
-- **Espacio de acciones**: continuo, `Box(-1, 1, shape=(4,))` =
-  `[vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd]`, reutilizando el controlador PID de
-  velocidad ya validado en `drone-deep-rl`.
-- **Copiloto (autonomía compartida)**: política residual, siguiendo
+- **Stack**: Pure Python. Webots + Gymnasium, without a native C++ controller for now.
+- **Optimal pilot**: 100% reinforcement learning. Trained with two algorithms for
+  comparison:
+  - [`rltools`](https://pypi.org/project/rltools/) (Python wrapper for RLtools) → SAC.
+  - [`stable-baselines3`](https://github.com/DLR-RM/stable-baselines3) → PPO, as a
+    "traditional framework" baseline.
+  Imitation learning is not used in this iteration (no joystick is available to capture
+  high-quality continuous demonstrations; left as future work).
+- **Action space**: Continuous, `Box(-1, 1, shape=(4,))` =
+  `[vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd]`, reusing the velocity PID controller
+  already validated in `drone-deep-rl`.
+- **Copilot (shared autonomy)**: Residual policy, following
   [Schaff & Walter, 2020](https://arxiv.org/abs/2004.05097):
 
   ```
   a = clip(a_h + a_r, -1, 1)
-  a_h ~ pi_h(s, g)      # piloto (humano o sintético): orientado a la meta
-  a_r ~ pi_r(s, a_h)    # copiloto: corrección residual, agnóstica a la meta
+  a_h ~ pi_h(s, g)      # pilot (human or synthetic): goal-directed
+  a_r ~ pi_r(s, a_h)    # copilot: residual correction, goal-agnostic
   ```
 
-  El copiloto se entrena para minimizar su propia intervención (`‖a_r‖²`) mientras
-  evita violar restricciones de seguridad (colisiones / proximidad a obstáculos).
+  The copilot is trained to minimize its own intervention (`‖a_r‖²`) while avoiding
+  safety constraint violations (collisions / obstacle proximity).
 
-Ver la discusión completa de por qué se eligió esta arquitectura (y no RLtools nativo en
-C++, ni aprendizaje por imitación) en `docs/architecture.md`.
+See the full discussion on why this architecture was chosen (rather than native C++
+RLtools or imitation learning) in `docs/architecture.md`.
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 shared_autonomy_deep_rl/
-├── webots_project/            # Mundo (.wbt) y controlador Webots
+├── webots_project/            # Webots world (.wbt) and controller
 ├── src/
-│   ├── envs/                  # Entornos Gymnasium (drone, escenario, composición piloto+copiloto)
-│   ├── pilots/                # Piloto óptimo, ruidoso, lento (sintéticos)
-│   ├── copilot/                # Política residual
-│   ├── rewards/                # Funciones de recompensa (orientada a meta / goal-agnostic)
-│   ├── training/                # Scripts de entrenamiento (RLtools-SAC, SB3-PPO, copiloto)
-│   └── evaluation/              # Métricas y comparación de pilotos
-├── notebooks/                  # Análisis exploratorio de resultados
+│   ├── envs/                  # Gymnasium environments (drone, scenario, pilot+copilot composition)
+│   ├── pilots/                # Optimal, noisy, and laggy (synthetic) pilots
+│   ├── copilot/               # Residual policy
+│   ├── rewards/               # Reward functions (goal-directed / goal-agnostic)
+│   ├── training/              # Training scripts (RLtools-SAC, SB3-PPO, copilot)
+│   └── evaluation/            # Pilot metrics and comparison
+├── notebooks/                 # Exploratory analysis of results
 ├── tests/
-├── docs/architecture.md        # Decisiones de diseño y su justificación
+├── docs/architecture.md       # Design decisions and rationale
 ├── requirements.txt
 └── INSTALL.md
 ```
 
-## Instalación
+## Installation
 
-Ver [`INSTALL.md`](INSTALL.md).
+See [`INSTALL.md`](INSTALL.md).
 
-## Documento técnico de referencia
+## Technical References
 
 Diedrichs, Ana Laura. «Teleoperación asistida de cuadricópteros mediante aprendizaje por
 refuerzo profundo». Zenodo, 2025. <https://doi.org/10.5281/zenodo.16914761>
@@ -79,10 +82,10 @@ Eschmann, J., Albani, D., & Loianno, G. (2024). RLtools: A Fast, Portable Deep
 Reinforcement Learning Library for Continuous Control. *JMLR*, 25(301).
 <http://jmlr.org/papers/v25/24-0248.html>
 
-## Licencia
+## License
 
-Apache-2.0. Ver [`LICENSE`](LICENSE).
+Apache-2.0. See [`LICENSE`](LICENSE).
 
-## Contacto
+## Contact
 
 Ana Diedrichs - ana (dot) diedrichs (at) docentes.frm.utn.edu.ar
