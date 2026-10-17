@@ -1,104 +1,106 @@
-# Guía de Ejecución con Docker y Webots
+*Read this in other languages: [Español](docker_guide.es.md)*
 
-Este documento describe cómo levantar el entorno contenerizado del proyecto con soporte para aceleración gráfica (GUI) y ejecutar Webots junto con los módulos de entrenamiento de aprendizaje por refuerzo.
+# Docker and Webots Execution Guide
 
----
-
-## 1. Características del Entorno Contenerizado
-
-La imagen de Docker definida en el [`Dockerfile`](../Dockerfile) y gestionada con [`docker-compose.yaml`](../docker-compose.yaml) incluye:
-- **Sistema base**: Ubuntu 24.04 LTS.
-- **Simulador**: Webots oficial (Cyberbotics) instalado y configurado en `$WEBOTS_HOME=/usr/local/webots`.
-- **Soporte gráfico**: Servidor X11, librerías Mesa OpenGL y `xvfb` para simulación acelerada o sin pantalla (headless).
-- **Entorno Python**: Virtualenv en `/opt/venv` con dependencias preinstaladas (`gymnasium`, `stable-baselines3`, `rltools`, `torch`, `tensorboard`, `pandas`, `pybind11`, etc.).
-- **Montaje de volumen**: La raíz del repositorio se monta en `/workspace`.
+This document describes how to start the project's containerized environment with graphics acceleration (GUI) support and run Webots alongside the reinforcement learning training modules.
 
 ---
 
-## 2. Paso a Paso para la Ejecución
+## 1. Containerized Environment Features
 
-### Paso 1: Permitir acceso a la pantalla X11 desde el Host (Linux)
-Para que Webots pueda abrir ventanas gráficas desde el contenedor hacia tu monitor, debes conceder permisos de visualización al servidor X local. Ejecuta en tu terminal del host:
+The Docker image defined in [`Dockerfile`](../Dockerfile) and managed via [`docker-compose.yaml`](../docker-compose.yaml) includes:
+- **Base OS**: Ubuntu 24.04 LTS.
+- **Simulator**: Official Webots (Cyberbotics) installed and configured at `$WEBOTS_HOME=/usr/local/webots`.
+- **Graphics support**: X11 server, Mesa OpenGL libraries, and `xvfb` for accelerated or headless simulation.
+- **Python environment**: Virtualenv at `/opt/venv` with pre-installed dependencies (`gymnasium`, `stable-baselines3`, `rltools`, `torch`, `tensorboard`, `pandas`, `pybind11`, etc.).
+- **Volume mount**: The repository root is mounted at `/workspace`.
+
+---
+
+## 2. Step-by-Step Execution
+
+### Step 1: Allow X11 Display Access from the Host (Linux)
+So that Webots can open graphical windows from the container onto your monitor, grant display permissions to the local X server. Run in your host terminal:
 
 ```bash
 xhost +local:root
-# o alternativamente:
+# or alternatively:
 xhost +local:$USER
 ```
 
 > [!NOTE]
-> Este comando debe ejecutarse una vez por cada sesión de usuario en tu sistema operativo host antes de levantar el contenedor si planeas usar la interfaz gráfica.
+> This command must be executed once per user session on your host operating system before starting the container if you plan to use the graphical user interface.
 
 ---
 
-### Paso 2: Configurar Aceleración Gráfica por Hardware (Opcional pero recomendado)
-Por defecto, [`docker-compose.yaml`](../docker-compose.yaml) utiliza renderizado universal por software (CPU). Para que Webots se ejecute a 60 FPS fluidos aprovechando la GPU de tu máquina física, utiliza el archivo de sobreescritura local:
+### Step 2: Configure Hardware Graphics Acceleration (Optional but Recommended)
+By default, [`docker-compose.yaml`](../docker-compose.yaml) uses universal software rendering (CPU). For Webots to run at a smooth 60 FPS leveraging your physical machine's GPU, use the local override file:
 
-1. Copia la plantilla de configuración:
+1. Copy the configuration template:
    ```bash
    cp docker-compose.override.yaml.example docker-compose.override.yaml
    ```
-2. Adapta según tu hardware:
-   - **GPU Intel / AMD (como Intel Iris Plus/Xe o Radeon)**:
-     Basta con dejar activa la directiva `/dev/dri`:
+2. Adapt according to your hardware:
+   - **Intel / AMD GPU (such as Intel Iris Plus/Xe or Radeon)**:
+     Simply keep the `/dev/dri` directive active:
      ```yaml
      services:
        simulador:
          devices:
            - /dev/dri:/dev/dri
      ```
-   - **GPU NVIDIA dedicada**:
-     Requiere tener instalado `nvidia-container-toolkit` en el host y descomentar el bloque NVIDIA en `docker-compose.override.yaml`.
-   - **Máquinas sin GPU / Servidores headless / CI**:
-     No crees el archivo `docker-compose.override.yaml` (o bórralo). Docker usará CPU por defecto sin arrojar ningún error de dispositivo faltante.
+   - **Dedicated NVIDIA GPU**:
+     Requires `nvidia-container-toolkit` installed on the host and uncommenting the NVIDIA block in `docker-compose.override.yaml`.
+   - **Machines without GPU / Headless servers / CI**:
+     Do not create `docker-compose.override.yaml` (or delete it). Docker will use CPU rendering by default without raising any missing-device errors.
 
 > [!TIP]
-> El archivo `docker-compose.override.yaml` está ignorado en `.gitignore` para que cada computadora mantenga su propia aceleración gráfica sin sobreescribir la de las demás.
+> The `docker-compose.override.yaml` file is ignored in `.gitignore` so each machine can keep its own hardware acceleration settings without overwriting others.
 
 ---
 
-### Paso 3: Construir y levantar el contenedor
-Desde la raíz del repositorio (`0001-webots-rl`), compila la imagen (si es la primera vez o hubo cambios en el `Dockerfile`) e inicia el servicio en segundo plano:
+### Step 3: Build and Start the Container
+From the repository root (`0001-webots-rl`), build the image (if running for the first time or after changes to `Dockerfile`) and start the service in the background:
 
 ```bash
 docker compose up -d --build
 ```
 
-*(Si ya construiste la imagen previamente y no hay cambios en dependencias, basta con ejecutar `docker compose up -d`).*
+*(If you have already built the image previously and dependencies have not changed, simply run `docker compose up -d`).*
 
 ---
 
-### Paso 4: Acceder a la terminal interactiva del contenedor
-Para abrir una sesión interactiva de Bash dentro del contenedor en ejecución:
+### Step 4: Access the Container's Interactive Terminal
+To open an interactive Bash session inside the running container:
 
 ```bash
 docker compose exec -it simulador bash
 ```
-*(O utilizando el nombre del contenedor: `docker exec -it webots_rltools_env bash`).*
+*(Or using the container name: `docker exec -it webots_rltools_env bash`).*
 
-Al ingresar:
-- Estarás automáticamente en el directorio `/workspace`.
-- El entorno virtual de Python (`/opt/venv`) estará activo por defecto en tu `$PATH`.
+Upon entering:
+- You will automatically be in the `/workspace` directory.
+- The Python virtual environment (`/opt/venv`) will be active by default in your `$PATH`.
 
 ---
 
-### Paso 5: Ejecutar Webots
+### Step 5: Run Webots
 
-Una vez dentro de la terminal del contenedor, dispones de dos modalidades de ejecución:
+Once inside the container terminal, two execution modes are available:
 
-#### Opción A: Modo con interfaz gráfica (GUI 3D)
-Ideal para inspección visual, teleoperación y validación de escenarios:
+#### Option A: Graphical User Interface Mode (3D GUI)
+Ideal for visual inspection, teleoperation, and scenario validation:
 
 ```bash
 webots /workspace/webots_project/worlds/crazyflie.wbt
 ```
-O simplemente iniciar Webots y abrir el mundo desde el menú del simulador:
+Or simply launch Webots and open the world from the simulator menu:
 ```bash
 webots
 ```
 
-#### Opción B: Modo Headless / Sin Interfaz (Entrenamiento Rápido)
-Para entrenamientos masivos de RL donde no se requiere renderizado 3D, puedes acelerar drásticamente los pasos de simulación ejecutando con `xvfb-run` y flags de simulación rápida:
+#### Option B: Headless Mode (Fast Training)
+For large-scale RL training where 3D rendering is not required, you can drastically accelerate simulation steps by running with `xvfb-run` and fast simulation flags:
 
 ```bash
 xvfb-run webots --batch --mode=fast --no-rendering /workspace/webots_project/worlds/crazyflie.wbt
@@ -106,32 +108,32 @@ xvfb-run webots --batch --mode=fast --no-rendering /workspace/webots_project/wor
 
 ---
 
-### Paso 6: Ejecutar entrenamientos y pruebas dentro del contenedor
+### Step 6: Run Training and Tests Inside the Container
 
-Desde `/workspace` dentro del contenedor puedes ejecutar los scripts directamente:
+From `/workspace` inside the container you can run the scripts directly (see also the [Training Guide](training_guide.md) and the [Evaluation Guide](evaluation_guide.md)):
 
-- **Correr las pruebas unitarias**:
+- **Run unit tests**:
   ```bash
   python -m pytest tests/
-  # o individualmente:
+  # or individually:
   python tests/test_envs.py
   python tests/test_pilots.py
   ```
 
-- **Entrenar el piloto óptimo con PPO (Stable-Baselines3)**:
+- **Train the optimal pilot with PPO (Stable-Baselines3)**:
   ```bash
   python src/training/train_sb3_ppo.py --timesteps 100000
   ```
 
-- **Entrenar el piloto óptimo con SAC (RLtools)**:
+- **Train the optimal pilot with SAC (RLtools)**:
   ```bash
   python src/training/train_rltools_sac.py --steps 100000
   ```
 
 ---
 
-### Paso 7: Detener el contenedor al finalizar
-Cuando termines tu sesión de trabajo, sal de la terminal del contenedor con `exit` y detén los servicios desde el host:
+### Step 7: Stop the Container When Finished
+When you finish your work session, exit the container terminal with `exit` and stop the services from the host:
 
 ```bash
 docker compose down
@@ -139,12 +141,12 @@ docker compose down
 
 ---
 
-## 3. Solución de Problemas Comunes
+## 3. Troubleshooting Common Issues
 
-- **Error `cannot connect to X server`**:
-  Verifica que ejecutaste `xhost +local:root` en el host y que la variable `$DISPLAY` esté definida en tu terminal del host (`echo $DISPLAY`, usualmente `:0` o `:1`).
-- **Problemas con permisos de archivos creados dentro del contenedor**:
-  El contenedor comparte el usuario local (`USER=${USER}` en `docker-compose.yaml`). Si algún archivo generado dentro queda como `root`, puedes corregir los permisos desde el host con:
+- **`cannot connect to X server` error**:
+  Verify that you ran `xhost +local:root` on the host and that the `$DISPLAY` variable is set in your host terminal (`echo $DISPLAY`, usually `:0` or `:1`).
+- **Permission issues with files created inside the container**:
+  The container shares the local user (`USER=${USER}` in `docker-compose.yaml`). If any generated file ends up owned by `root`, you can fix permissions from the host with:
   ```bash
   sudo chown -R $USER:$USER .
   ```

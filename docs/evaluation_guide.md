@@ -1,88 +1,90 @@
+*Read this in other languages: [Español](evaluation_guide.es.md)*
+
 # Evaluation Guide
 
-Guía para la evaluación cuantitativa de los pilotos (óptimo, heurístico, ruidoso y con retardo) en el entorno Webots, y el cálculo de métricas estadísticas análogas a las tablas 4.1 a 4.4 de la tesis (Diedrichs, 2025).
+Guide for quantitative evaluation of the pilots (optimal, heuristic, noisy, and laggy) in the Webots environment, and computation of statistical metrics analogous to Tables 4.1 through 4.4 of the thesis (Diedrichs, 2025).
 
 ---
 
-## Requisitos
+## Prerequisites
 
-Tener el contenedor Docker en ejecución con el entorno de simulación configurado (según `docs/docker_guide.md` y `docs/training_guide.md`).
+Have the Docker container running with the simulation environment configured (according to [`docker_guide.md`](docker_guide.md) and [`training_guide.md`](training_guide.md)).
 
 ---
 
-## 1. Acceso gráfico (Opcional, solo si usas modo con GUI)
+## 1. Graphics Access (Optional, GUI Mode Only)
 
-Si vas a abrir la ventana 3D de Webots en tu monitor, habilita la salida gráfica X11 en tu máquina host:
+If you plan to open the Webots 3D window on your monitor, enable X11 graphics output on your host machine:
 
 ```bash
 xhost +local:root
 ```
 
-*(Si vas a evaluar en **modo headless / sin interfaz gráfica**, puedes saltarte este paso por completo).*
+*(If you are evaluating in **headless mode / without GUI**, you can skip this step entirely).*
 
 ---
 
-## 2. Iniciar el simulador Webots (Elige una modalidad)
+## 2. Start the Webots Simulator (Choose One Mode)
 
-Elige entre visualizar el vuelo en 3D o evaluar a máxima velocidad sin gráficos:
+Choose between visualizing the flight in 3D or evaluating at maximum speed without graphics:
 
-### Modalidad A: Con interfaz gráfica 3D (GUI)
+### Mode A: With 3D Graphical Interface (GUI)
 
-Permite observar visualmente la actitud de vuelo del Crazyflie en tu monitor:
+Allows visually observing the Crazyflie's flight attitude on your monitor:
 
 ```bash
 docker exec -it webots_rltools_env bash
 webots webots_project/worlds/crazyflie.wbt
 ```
 
-> **Nota:** La ventana gráfica de Webots se abrirá y quedará a la espera de la conexión del controlador `<extern>`.
+> **Note:** The Webots graphical window will open and wait for the `<extern>` controller connection.
 
-### Modalidad B: Modo sin interfaz gráfica (Headless / Ultra rápido)
+### Mode B: Headless Mode (No GUI / Ultra-Fast)
 
-Desactiva el motor OpenGL y corre la física al máximo rendimiento de la CPU. **20 episodios se evalúan en apenas 10 a 15 segundos**:
+Disables the OpenGL engine and runs physics at maximum CPU performance. **20 episodes are evaluated in just 10 to 15 seconds**:
 
 ```bash
 docker exec -it webots_rltools_env bash
 xvfb-run -a webots --batch --mode=fast --no-rendering webots_project/worlds/crazyflie.wbt
 ```
 
-**Parámetros explicados:**
-* `xvfb-run -a`: Crea un servidor virtual de pantalla en memoria RAM (*X Virtual Framebuffer*), permitiendo que Webots corra sin necesidad de pantalla física ni permisos `xhost`.
-* `--batch`: Modo no interactivo (evita diálogos emergentes o ventanas de confirmación).
-* `--mode=fast`: Calcula la física ODE a máxima velocidad computacional (sin esperar al reloj de tiempo real).
-* `--no-rendering`: **Desactiva por completo el dibujo y renderizado 3D**, ahorrando GPU y ciclos de CPU.
+**Parameters explained:**
+* `xvfb-run -a`: Creates an in-memory virtual display server (*X Virtual Framebuffer*), allowing Webots to run without a physical screen or `xhost` permissions.
+* `--batch`: Non-interactive mode (prevents pop-up dialogs or confirmation prompts).
+* `--mode=fast`: Computes ODE physics at maximum computational speed (without waiting for the real-time clock).
+* `--no-rendering`: **Completely disables 3D drawing and rendering**, saving GPU and CPU cycles.
 
 ---
 
-### Alternativa: Ejecutar todo en una sola terminal (Webots en segundo plano)
+### Alternative: Run Everything in a Single Terminal (Webots in the Background)
 
-Si prefieres no usar dos terminales separadas, puedes iniciar Webots en segundo plano (*background*) y correr la evaluación inmediatamente en la misma consola:
+If you prefer not to use two separate terminals, you can launch Webots in the background and run the evaluation immediately in the same console:
 
 ```bash
-# 1. Entrar al contenedor
+# 1. Enter the container
 docker exec -it webots_rltools_env bash
 
-# 2. Iniciar Webots headless en segundo plano silenciando logs
+# 2. Start headless Webots in the background while silencing logs
 xvfb-run -a webots --batch --mode=fast --no-rendering webots_project/worlds/crazyflie.wbt > /tmp/webots.log 2>&1 &
 
-# 3. Ejecutar la evaluación de pilotos (se conectará en 1 segundo)
+# 3. Run pilot evaluation (connects within 1 second)
 python src/evaluation/metrics.py --pilot-type optimal --checkpoint models/ppo_optimal_pilot.zip --episodes 20 --corner cone_1 --save-csv logs/eval_ppo_optimal.csv
 
-# 4. Al finalizar la evaluación, detener el proceso de Webots en segundo plano:
+# 4. Once evaluation finishes, stop the background Webots process:
 pkill -f webots-bin
 ```
 
 ---
 
-## 3. Terminal 2: Ejecutar la evaluación de pilotos
+## 3. Terminal 2: Run Pilot Evaluation
 
-Abre una segunda terminal en tu máquina, entra al contenedor y ejecuta `src/evaluation/metrics.py`.
+Open a second terminal on your machine, enter the container, and run `src/evaluation/metrics.py`.
 
-El script soporta evaluar los diferentes tipos de pilotos mediante el argumento `--pilot-type`:
+The script supports evaluating the different pilot types via the `--pilot-type` argument:
 
-### A. Evaluar el Piloto Óptimo entrenado (PPO)
+### A. Evaluate the Trained Optimal Pilot (PPO)
 
-Evalúa la política aprendida de manera **determinista** (sin ruido de exploración):
+Evaluates the learned policy **deterministically** (without exploration noise):
 
 ```bash
 docker exec -it webots_rltools_env bash
@@ -94,9 +96,9 @@ python src/evaluation/metrics.py \
   --save-csv logs/eval_ppo_optimal.csv
 ```
 
-### B. Evaluar el Piloto Heurístico (Benchmark / Referencia Geométrica)
+### B. Evaluate the Heuristic Pilot (Benchmark / Geometric Reference)
 
-Evalúa el controlador proporcional en lazo cerrado para contrastar contra el piloto óptimo:
+Evaluates the closed-loop proportional controller as a baseline against the optimal pilot:
 
 ```bash
 python src/evaluation/metrics.py \
@@ -107,9 +109,9 @@ python src/evaluation/metrics.py \
   --save-csv logs/eval_heuristic.csv
 ```
 
-### C. Evaluar el Piloto Ruidoso (NoisyPilot - Simulación de temblor o error humano)
+### C. Evaluate the Noisy Pilot (NoisyPilot - Tremor or Human Error Simulation)
 
-Inyecta perturbaciones gaussianas $\mathcal{N}(0, \sigma^2)$ sobre las acciones continuas del piloto óptimo:
+Injects Gaussian perturbations $\mathcal{N}(0, \sigma^2)$ onto the continuous actions of the optimal pilot:
 
 ```bash
 python src/evaluation/metrics.py \
@@ -121,9 +123,9 @@ python src/evaluation/metrics.py \
   --save-csv logs/eval_noisy_sigma015.csv
 ```
 
-### D. Evaluar el Piloto con Retardo (LaggyPilot - Simulación de latencia de reacción)
+### D. Evaluate the Laggy Pilot (LaggyPilot - Reaction Latency Simulation)
 
-Introduce inercia temporal repitiendo la última acción con probabilidad $p_{\text{repeat}}$:
+Introduces temporal inertia by repeating the previous action with probability $p_{\text{repeat}}$:
 
 ```bash
 python src/evaluation/metrics.py \
@@ -135,9 +137,9 @@ python src/evaluation/metrics.py \
   --save-csv logs/eval_laggy_p025.csv
 ```
 
-### E. Evaluar el Piloto Asistido (AssistedPilot con Copiloto Residual)
+### E. Evaluate the Assisted Pilot (AssistedPilot with Residual Copilot)
 
-Evalúa la composición aditiva $a = \text{clip}(a_h + a_r, -1, 1)$ aplicando el copiloto entrenado sobre un piloto degradado o con retardo:
+Evaluates the additive composition $a = \text{clip}(a_h + a_r, -1, 1)$ by applying the trained copilot on top of a degraded or laggy pilot:
 
 ```bash
 python src/evaluation/metrics.py \
@@ -154,33 +156,33 @@ python src/evaluation/metrics.py \
 
 ---
 
-## 4. Opciones y parámetros de línea de comandos
+## 4. Command-Line Options and Parameters
 
-| Argumento | Tipo | Por defecto | Descripción |
+| Argument | Type | Default | Description |
 |---|---|---|---|
-| `--pilot-type` | `str` | `optimal` | Tipo de piloto: `optimal`, `heuristic`, `noisy`, `laggy`, `assisted`. |
-| `--checkpoint` | `str` | `models/ppo_optimal_pilot.zip` | Ruta al archivo del modelo entrenado (`.zip` o `.h`). |
-| `--backend` | `str` | `sb3_ppo` | Backend para OptimalPilot: `sb3_ppo`, `rltools_sac`, `dummy`. |
-| `--heuristic-mode` | `str` | `proportional` | Modalidad heurística: `proportional` u `open_loop`. |
-| `--base-pilot-type` | `str` | `noisy` | Piloto base asistido si `pilot-type=assisted` (`noisy`, `laggy`, `optimal`). |
-| `--copilot-checkpoint` | `str` | `None` | Ruta al modelo del copiloto residual (`.zip` o `.h`). |
-| `--copilot-backend` | `str` | `auto` | Backend del copiloto (`auto`, `sb3_ppo`, `sb3_sac`, `rltools_sac`, `dummy`). |
-| `--residual-scale` | `float` | `1.0` | Factor de escala para limitar la intervención residual $a_r$. |
-| `--episodes` | `int` | `10` | Cantidad de episodios a evaluar. |
-| `--corner` | `str` | `cone_1` | Cono objetivo en Webots (`cone_1`, `cone_2`, `cone_3`, `cone_4`). |
-| `--max-episode-steps`| `int` | `1000` | Límite máximo de pasos por episodio antes de truncar. |
-| `--sigma` | `float` | `0.1` | Desviación estándar del ruido para `NoisyPilot`. |
-| `--p-repeat` | `float` | `0.2` | Probabilidad de repetición de acción para `LaggyPilot`. |
-| `--save-csv` | `str` | `logs/eval_results.csv` | Ruta destino para guardar los resultados detallados por episodio. |
-| `--verbose` | `int` | `1` | `0`: silencioso, `1`: resumen por episodio y global, `2`: paso a paso. |
+| `--pilot-type` | `str` | `optimal` | Pilot type: `optimal`, `heuristic`, `noisy`, `laggy`, `assisted`. |
+| `--checkpoint` | `str` | `models/ppo_optimal_pilot.zip` | Path to the trained model file (`.zip` or `.h`). |
+| `--backend` | `str` | `sb3_ppo` | Backend for OptimalPilot: `sb3_ppo`, `rltools_sac`, `dummy`. |
+| `--heuristic-mode` | `str` | `proportional` | Heuristic mode: `proportional` or `open_loop`. |
+| `--base-pilot-type` | `str` | `noisy` | Base pilot to assist when `pilot-type=assisted` (`noisy`, `laggy`, `optimal`). |
+| `--copilot-checkpoint` | `str` | `None` | Path to the residual copilot model (`.zip` or `.h`). |
+| `--copilot-backend` | `str` | `auto` | Copilot backend (`auto`, `sb3_ppo`, `sb3_sac`, `rltools_sac`, `dummy`). |
+| `--residual-scale` | `float` | `1.0` | Scaling factor to limit the residual intervention $a_r$. |
+| `--episodes` | `int` | `10` | Number of episodes to evaluate. |
+| `--corner` | `str` | `cone_1` | Target cone in Webots (`cone_1`, `cone_2`, `cone_3`, `cone_4`). |
+| `--max-episode-steps`| `int` | `1000` | Maximum step limit per episode before truncation. |
+| `--sigma` | `float` | `0.1` | Standard deviation of noise for `NoisyPilot`. |
+| `--p-repeat` | `float` | `0.2` | Action repetition probability for `LaggyPilot`. |
+| `--save-csv` | `str` | `logs/eval_results.csv` | Destination path to save detailed per-episode results. |
+| `--verbose` | `int` | `1` | `0`: silent, `1`: per-episode and global summary, `2`: step-by-step. |
 
 ---
 
-## 5. Salida de métricas y formato CSV
+## 5. Metrics Output and CSV Format
 
-### En la terminal
+### Terminal Output
 
-Al finalizar la corrida, se imprime un resumen estadístico:
+At the end of the run, a statistical summary is printed:
 
 ```text
 =================================================================
@@ -194,18 +196,18 @@ Al finalizar la corrida, se imprime un resumen estadístico:
 =================================================================
 ```
 
-### En el archivo CSV (`logs/...csv`)
+### CSV File (`logs/...csv`)
 
-El archivo CSV generado contiene las siguientes columnas por episodio:
+The generated CSV file contains the following columns per episode:
 
-* `episode`: Número secuencial del episodio.
-* `reward`: Recompensa acumulada obtenida en el episodio.
-* `length`: Cantidad de pasos ejecutados antes de terminar.
-* `success`: Booleano (`True`/`False`), indica si alcanzó el cono con altitud segura $> 0.20\,\text{m}$.
-* `termination`: Motivo de finalización (`goal`, `fall`, `out_of_bounds`, `timeout`).
-* `final_distance`: Distancia euclidiana mínima en metros al centro del cono en el último paso.
+* `episode`: Sequential episode number.
+* `reward`: Cumulative reward obtained in the episode.
+* `length`: Number of steps executed before termination.
+* `success`: Boolean (`True`/`False`), indicates whether the drone reached the cone at a safe altitude $> 0.20\,\text{m}$.
+* `termination`: Termination reason (`goal`, `fall`, `out_of_bounds`, `timeout`).
+* `final_distance`: Minimum Euclidean distance in meters to the center of the cone on the final step.
 
-Este archivo se puede cargar directamente con `pandas` para análisis o generación de gráficos en Jupyter notebooks:
+This file can be loaded directly with `pandas` for analysis or plotting in Jupyter notebooks:
 
 ```python
 import pandas as pd
@@ -215,9 +217,9 @@ print(f"Success rate: {df['success'].mean() * 100:.1f}%")
 
 ---
 
-## 6. Comparación y generación de reportes cuantitativos (`compare_pilots.py`)
+## 6. Quantitative Comparison and Report Generation (`compare_pilots.py`)
 
-Para agregar y comparar sistemáticamente los resultados de múltiples pilotos (por ejemplo, contrastar un piloto no asistido frente a su versión con copiloto residual):
+To systematically aggregate and compare the results of multiple pilots (for instance, contrasting an unassisted pilot against its residual-copilot-assisted counterpart):
 
 ```bash
 docker exec -it webots_rltools_env bash
@@ -228,19 +230,19 @@ python src/evaluation/compare_pilots.py \
     logs/eval_noisy_sigma015.csv \
     logs/eval_assisted_noisy.csv \
   --labels \
-    "Heurístico" \
-    "Óptimo PPO" \
-    "Noisy (solo)" \
-    "Noisy + Copiloto" \
+    "Heuristic" \
+    "Optimal PPO" \
+    "Noisy (unassisted)" \
+    "Noisy + Copilot" \
   --output-dir logs/
 ```
 
-### Artefactos generados:
-1. **Tabla CSV agregada (`logs/pilots_comparison_summary.csv`):** Tasa de éxito, tasa de colisión, duración y distancias.
-2. **Tabla Markdown (`logs/pilots_comparison_summary.md`):** Formateada para inclusión directa en reportes y tesis.
-3. **Gráficos PNG (`logs/pilots_success_vs_collision.png` y `logs/pilots_rewards_and_lengths.png`):** Figuras en alta resolución listas para publicación.
+### Generated Artifacts:
+1. **Aggregated CSV Table (`logs/pilots_comparison_summary.csv`):** Success rate, collision rate, episode duration, and distances.
+2. **Markdown Table (`logs/pilots_comparison_summary.md`):** Formatted for direct inclusion in reports and thesis documents.
+3. **PNG Plots (`logs/pilots_success_vs_collision.png` and `logs/pilots_rewards_and_lengths.png`):** High-resolution publication-ready figures.
 
-### 7. Análisis interactivo en Jupyter Notebook
+### 7. Interactive Analysis in Jupyter Notebook
 
-Para explorar trayectorias espaciales 2D/3D en la habitación de $2 \times 2\text{ m}$ y curvas de activación del residual, abre el notebook:
+To explore 2D/3D spatial trajectories inside the $2 \times 2\text{ m}$ arena and residual activation curves, open the notebook:
 `notebooks/01_pilots_and_copilot_analysis.ipynb`

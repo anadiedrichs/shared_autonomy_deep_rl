@@ -1,119 +1,121 @@
-# Decisiones de arquitectura
+*Read this in other languages: [Español](architecture.es.md)*
 
-Este documento registra las decisiones tomadas antes de portar código desde
-[`drone-deep-rl`](https://github.com/anadiedrichs/drone-deep-rl) (tesis CEIA-FIUBA 2025) a
-este repositorio, y el razonamiento detrás de cada una. El objetivo es que cualquier
-colaborador (o la propia autora, meses después) entienda *por qué* se descartaron otras
-opciones, no solo cuál se eligió.
+# Architecture Decisions
 
-## 1. Integración RLtools–Webots: wrapper Python (no C++ nativo)
+This document records the architectural decisions made prior to porting code from
+[`drone-deep-rl`](https://github.com/anadiedrichs/drone-deep-rl) (CEIA-FIUBA 2025 thesis) to
+this repository, along with the rationale behind each one. The goal is for any
+collaborator (or the author herself, months later) to understand *why* alternative
+options were discarded, not just which one was chosen.
 
-RLtools es una librería **header-only en C++ puro**, sin dependencias, diseñada para que
-el compilador conozca en tiempo de compilación las dimensiones de todas las estructuras
-(observaciones, acciones, capas de la red). El equipo de RLtools distribuye también un
-wrapper Python (`pip install rltools`, repo
-[`rl-tools/python-interface`](https://github.com/rl-tools/python-interface)) que:
+## 1. RLtools–Webots Integration: Python Wrapper (not Native C++)
 
-- Depende solo de `pybind11`.
-- Toma como entrada una función `env_factory()` que devuelve un entorno **Gymnasium**, e
-  infiere de ahí las dimensiones de observación/acción para compilar en tiempo de
-  ejecución un entorno "puente" compatible con RLtools.
-- Hoy **solo expone el loop de entrenamiento de SAC**, sin mucho control sobre
-  hiperparámetros ("work in progress").
-- Permite exportar el checkpoint entrenado como **header C** (`state.export_policy()`),
-  pensado para desplegarse directo en firmware embebido — la pieza que conecta con el
-  objetivo de portabilidad / sim-to-real del proyecto, incluso sin escribir el
-  controlador de Webots en C++.
+RLtools is a **pure C++ header-only** library with zero dependencies, designed so that
+the compiler knows the dimensions of all data structures (observations, actions, network
+layers) at compile time. The RLtools team also distributes a Python wrapper
+(`pip install rltools`, repo
+[`rl-tools/python-interface`](https://github.com/rl-tools/python-interface)) that:
 
-### Opciones consideradas
+- Depends only on `pybind11`.
+- Takes as input an `env_factory()` function returning a **Gymnasium** environment, and
+  infers the observation/action dimensions from it to compile at runtime a "bridge"
+  environment compatible with RLtools.
+- Currently **only exposes the SAC training loop**, with limited hyperparameter control
+  ("work in progress").
+- Allows exporting the trained checkpoint as a **C header** (`state.export_policy()`),
+  intended for direct deployment on embedded firmware — the piece that connects to the
+  portability / sim-to-real objective of the project, even without writing the Webots
+  controller in C++.
 
-| Opción | Descripción | Por qué no se eligió (o se eligió) |
+### Options Considered
+
+| Option | Description | Why it was (or was not) chosen |
 |---|---|---|
-| A | Controlador Webots en C++ puro + RLtools nativo | Máximo rendimiento y fidelidad al objetivo TinyRL, pero implica reescribir todo `DroneRobotSupervisor`, sensores, PID y pilotos en C++ desde cero. Mayor riesgo de cronograma. Queda como evolución futura una vez validada la arquitectura en Python. |
-| B | Wrapper Python de RLtools | **Elegida.** Reusa el `DroneRobotSupervisor` en Python casi tal cual. Limitación conocida: solo SAC por ahora. |
-| C | Híbrido (SB3 en Python + módulo C++ aparte con RLtools) | Descartada por duplicar mantenimiento; se prefirió una única base de código en Python (opción B) más SB3 como baseline dentro del mismo stack. |
+| A | Pure C++ Webots controller + native RLtools | Maximum performance and fidelity to the TinyRL goal, but requires rewriting all of `DroneRobotSupervisor`, sensors, PID, and pilots in C++ from scratch. Higher schedule risk. Kept as a future evolution once the architecture is validated in Python. |
+| B | RLtools Python wrapper | **Chosen.** Reuses `DroneRobotSupervisor` in Python almost as-is. Known limitation: SAC only for now. |
+| C | Hybrid (SB3 in Python + separate C++ module with RLtools) | Discarded due to duplicated maintenance; a single Python codebase (Option B) plus SB3 as a baseline within the same stack was preferred. |
 
-### Consecuencia sobre el objetivo "comparar PPO y SAC integrados nativamente con RLtools"
+### Consequence for the Goal "Compare PPO and SAC Natively Integrated with RLtools"
 
-El wrapper Python de RLtools no entrena con PPO. Por lo tanto, la comparación PPO vs. SAC
-se resuelve así:
+The RLtools Python wrapper does not support PPO training. Therefore, the PPO vs. SAC
+comparison is resolved as follows:
 
-- **SAC vía `rltools`**: candidato a "modelo optimizado/portable" (política que se puede
-  exportar a C y potencialmente desplegar en el Crazyflie real).
-- **PPO vía `stable-baselines3`**: baseline de "framework tradicional", que además es
-  exactamente lo que pide el objetivo de evaluación del proyecto ("comparar... frente a
-  pilotos de línea base y modelos entrenados en frameworks tradicionales").
+- **SAC via `rltools`**: candidate for the "optimized/portable model" (a policy that can
+  be exported to C and potentially deployed on the real Crazyflie).
+- **PPO via `stable-baselines3`**: "traditional framework" baseline, which also directly
+  matches the project's evaluation objective ("compare... against baseline pilots and
+  models trained in traditional frameworks").
 
-Esto se documenta explícitamente para que en la memoria/paper final quede claro que la
-asimetría (SAC-RLtools vs. PPO-SB3, en lugar de PPO/SAC ambos en RLtools) es una
-limitación conocida de la librería en su versión actual, no un error de diseño.
+This is explicitly documented so that in the final report/paper it is clear that the
+asymmetry (SAC-RLtools vs. PPO-SB3, instead of both PPO/SAC in RLtools) is a known
+limitation of the library in its current version, not a design oversight.
 
-## 2. Piloto óptimo: RL puro, sin aprendizaje por imitación (por ahora)
+## 2. Optimal Pilot: Pure RL, Without Imitation Learning (For Now)
 
-En la tesis 2025, el piloto óptimo se obtuvo con dos enfoques: RL (PPO/DQN/A2C con
-acciones discretas) y aprendizaje por imitación (Behavioral Cloning con la librería
-`imitation`, a partir de datos capturados con teclado).
+In the 2025 thesis, the optimal pilot was obtained using two approaches: RL (PPO/DQN/A2C
+with discrete actions) and imitation learning (Behavioral Cloning with the `imitation`
+library, from keyboard-captured demonstrations).
 
-Al pasar a acciones **continuas**, la captura de demostraciones con teclado deja de ser
-directa: sin joystick, solo se pueden capturar comandos "bang-bang" (valor máximo
-mientras se mantiene la tecla, cero al soltar), que no explotan el rango continuo del
-espacio de acciones.
+When moving to **continuous** actions, capturing demonstrations via keyboard is no longer
+straightforward: without a joystick, only "bang-bang" commands can be captured (maximum
+value while holding a key, zero when released), which fail to exploit the continuous
+range of the action space.
 
-### Opciones consideradas para el piloto óptimo
+### Options Considered for the Optimal Pilot
 
-1. **RL puro (elegida)**: RLtools-SAC + SB3-PPO, sin captura humana. Es coherente con el
-   objetivo específico principal del proyecto (entrenar y comparar PPO/SAC), y no
-   depende de conseguir hardware.
-2. Captura "bang-bang" con teclado, mapeada a los extremos de `Box(-1,1)`: descartada por
-   ahora, queda como posible fallback de BC si RL no converge bien en algún escenario
-   (igual que ocurrió en la tesis 2025 con PPO puro).
-3. Joystick virtual (mouse/trackpad → ejes continuos): es una tarea **opcional** listada
-   en el formulario del proyecto ("Desarrollar la infraestructura de control..."). No se
-   implementa en esta primera iteración.
-4. Gamepad/joystick USB físico: requiere adquisición de hardware, fuera del alcance
-   inmediato.
+1. **Pure RL (chosen)**: RLtools-SAC + SB3-PPO, without human capture. It aligns with the
+   primary specific objective of the project (training and comparing PPO/SAC) and does
+   not depend on acquiring hardware.
+2. Keyboard "bang-bang" capture mapped to the extremes of `Box(-1,1)`: discarded for now;
+   kept as a potential BC fallback if RL fails to converge well in some scenario (as
+   happened in the 2025 thesis with pure PPO).
+3. Virtual joystick (mouse/trackpad → continuous axes): listed as an **optional** task in
+   the project proposal ("Develop the control infrastructure..."). Not implemented in
+   this first iteration.
+4. Physical USB gamepad/joystick: requires hardware acquisition, out of immediate scope.
 
-## 3. Espacio de acciones continuo
+## 3. Continuous Action Space
 
 ```
 Box(low=-1, high=1, shape=(4,), dtype=float32)
-# [vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd] (normalizado)
+# [vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd] (normalized)
 ```
 
-Se reutiliza el controlador PID de velocidad ya implementado en `DroneRobotSupervisor`
-(tesis 2025): las 6 acciones discretas originales eran combinaciones fijas de estos 4
-valores, así que el paso a continuo no requiere rediseñar el controlador de bajo nivel,
-solo desnormalizar el vector de acción antes de pasarlo al PID (mismo patrón que usa el
-propio ejemplo de RLtools con `gymnasium.wrappers.RescaleAction`).
+The velocity PID controller already implemented in `DroneRobotSupervisor` (2025 thesis)
+is reused: the original 6 discrete actions were fixed combinations of these 4 values, so
+transitioning to continuous control does not require redesigning the low-level controller—
+only denormalizing the action vector before passing it to the PID (the same pattern used
+by the RLtools example itself with `gymnasium.wrappers.RescaleAction`).
 
-## 4. Autonomía compartida: política residual
+## 4. Shared Autonomy: Residual Policy
 
-Siguiendo [Schaff & Walter (2020)](https://arxiv.org/abs/2004.05097):
+Following [Schaff & Walter (2020)](https://arxiv.org/abs/2004.05097):
 
 ```
 a = a_h + a_r
-a_h ~ pi_h(s, g)      # piloto: humano o sintético (óptimo / ruidoso / lento)
-a_r ~ pi_r(s, a_h)    # copiloto: corrección residual, condicionada a estado y acción del piloto
+a_h ~ pi_h(s, g)      # pilot: human or synthetic (optimal / noisy / laggy)
+a_r ~ pi_r(s, a_h)    # copilot: residual correction, conditioned on state and pilot action
 ```
 
-Esto reemplaza el esquema discreto de la tesis 2025 (tabla de distancia `Q(a*, ah)` +
-umbral `alpha`, que elegía *entre* la acción del piloto y la del copiloto) por una
-combinación *aditiva* y continua, donde el copiloto:
+This replaces the discrete scheme from the 2025 thesis (distance table `Q(a*, ah)` +
+threshold `alpha`, which selected *between* the pilot's action and the copilot's action)
+with an *additive* and continuous combination, where the copilot:
 
-- Se entrena contra una recompensa **agnóstica a la meta** (`reward_general_safety.py`):
-  penaliza colisión/proximidad a obstáculos y penaliza la magnitud `‖a_r‖²`, para que
-  intervenga lo mínimo posible.
-- No conoce la meta del piloto (a diferencia del piloto, que sí se entrena con una
-  recompensa orientada a la meta, `reward_goal_directed.py`).
+- Is trained against a **goal-agnostic** reward (`reward_general_safety.py`): penalizes
+  collision/proximity to obstacles and penalizes the magnitude `‖a_r‖²`, so that it
+  intervenes as little as possible.
+- Does not know the pilot's goal (unlike the pilot, which is trained with a
+  goal-directed reward, `reward_goal_directed.py`).
 
-## 5. Modelo de ejecución Webots: Controlador Externo (`<extern>`)
+## 5. Webots Execution Model: External Controller (`<extern>`)
 
-En la tesis 2025 (`drone-deep-rl`), el flujo de trabajo probado consistía en abrir Webots y
-**ejecutar los scripts de control y entrenamiento directamente desde el IDE (Visual Studio Code)**
-o la terminal.
+In the 2025 thesis (`drone-deep-rl`), the proven workflow consisted of opening Webots and
+**running the control and training scripts directly from the IDE (Visual Studio Code)**
+or the terminal.
 
-Para mantener esta operatividad y desacoplar el entorno Gymnasium de la interfaz gráfica de Webots,
-el nodo Crazyflie en el mundo `.wbt` (`webots_project/worlds/crazyflie.wbt`) se configura con:
+To preserve this workflow and decouple the Gymnasium environment from the Webots GUI, the
+Crazyflie node in the `.wbt` world (`webots_project/worlds/crazyflie.wbt`) is configured
+with:
 
 ```vrml
 DEF crazyflie Crazyflie {
@@ -123,28 +125,30 @@ DEF crazyflie Crazyflie {
 }
 ```
 
-### Justificación técnica:
+### Technical Justification:
 
-1. **Inversión de control requerida por Deep RL**: En frameworks como Stable-Baselines3 (PPO) y
-   RLtools (SAC), el bucle principal de control pertenece al algoritmo de aprendizaje
-   (`model.learn()` y `env.step()`), no al simulador. Al operar como controlador externo, el proceso
-   Python actúa como proceso maestro que avanza la simulación física paso a paso vía IPC
-   (`supervisor.step(timestep)`), permitiendo pausar el simulador durante el cálculo de gradientes
-   y optimizaciones en GPU.
-2. **Flexibilidad de ejecución (IDE / Terminal / Docker)**: Permite ejecutar scripts de evaluación
-   ([`src/evaluation/run_heuristic_episode.py`](file:///home/ana/0001-webots-rl/src/evaluation/run_heuristic_episode.py)) o entrenamiento
-   desde cualquier terminal, VS Code o contenedor Docker (`webots_rltools_env`), conectándose
-   automáticamente a la simulación física activa por memoria compartida (`ipc: host`).
-3. **Simulación acelerada sin renderizado (Headless)**: Hace posible entrenar a velocidades muy
-   superiores al tiempo real (10x-50x) mediante la opción headless de Webots:
-   `webots --batch --mode=fast --no-rendering <mundo.wbt>`.
+1. **Inversion of Control Required by Deep RL**: In frameworks such as Stable-Baselines3
+   (PPO) and RLtools (SAC), the main control loop belongs to the learning algorithm
+   (`model.learn()` and `env.step()`), not the simulator. By operating as an external
+   controller, the Python process acts as the master process that steps the physics
+   simulation via IPC (`supervisor.step(timestep)`), allowing the simulator to pause
+   during GPU gradient computation and optimization updates.
+2. **Execution Flexibility (IDE / Terminal / Docker)**: Allows running evaluation scripts
+   ([`src/evaluation/run_heuristic_episode.py`](../src/evaluation/run_heuristic_episode.py))
+   or training scripts from any terminal, VS Code, or Docker container
+   (`webots_rltools_env`), automatically connecting to the active physics simulation via
+   shared memory (`ipc: host`).
+3. **Accelerated Headless Simulation**: Enables training at speeds far exceeding real
+   time (10x–50x) via Webots headless flags:
+   `webots --batch --mode=fast --no-rendering <world.wbt>`.
 
-## Preguntas abiertas / pendientes de confirmar
+## Open Questions / Pending Confirmation
 
-- Parametrización exacta de `reward_general_safety.py`: pesos relativos entre penalización
-  de colisión y penalización de `‖a_r‖²`.
-- Si el residual se entrena con RLtools-SAC (coherente con el resto del pipeline) o con
-  SB3, y si se reentrena por cada tipo de piloto (óptimo/ruidoso/lento) o con un piloto
-  fijo durante el entrenamiento y se evalúa contra los demás.
-- Cómo exportar/visualizar las curvas de entrenamiento de RLtools en Tensorboard (SB3 ya
-  lo soporta nativamente; RLtools tiene su propio logging a revisar).
+- Exact parameterization of `reward_general_safety.py`: relative weights between collision
+  penalty and `‖a_r‖²` intervention penalty.
+- Whether the residual policy is trained with RLtools-SAC (consistent with the rest of the
+  pipeline) or with SB3, and whether it is retrained for each pilot type
+  (optimal/noisy/laggy) or trained against a single fixed pilot and evaluated across the
+  others.
+- How to export/visualize RLtools training curves in TensorBoard (SB3 supports it
+  natively; RLtools has its own logging mechanism to review).
