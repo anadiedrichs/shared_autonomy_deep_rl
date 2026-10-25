@@ -63,7 +63,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         )
 
         self._init_targets()
-        self.put_drone_in_the_center()
+        self._initialization()
 
     def _init_targets(self):
         """
@@ -84,6 +84,17 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             if pos_field is not None and hasattr(pos_field, "getSFVec3f"):
                 current_z = pos_field.getSFVec3f()[2]
                 pos_field.setSFVec3f([0.0, 0.0, current_z])
+
+    def _initialization(self):
+        """
+        Resets the environment state variables and positions the drone at the center of the arena.
+        Must be called always after __init__ and reset.
+        """
+        super()._initialization()
+        self.dist_min_target = 0.0
+        self.prev_dist_min_target = 0.0
+        self.corner = None
+        self.put_drone_in_the_center()
 
     def is_out_of_bounds(self) -> bool:
         """
@@ -249,10 +260,8 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             tuple: (observation, info)
         """
         obs, info = super().reset(seed=seed, options=options)
-        self.put_drone_in_the_center()
         self.dist_min_target = self.get_distance_to_target()
         self.prev_dist_min_target = self.dist_min_target
-        self.corner = None
         info = self.get_info()
         return obs, info
 

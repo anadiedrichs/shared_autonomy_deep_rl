@@ -244,6 +244,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     def _initialization(self):
         """
         Initializes devices, sensors, actuators, and the PID controller of the Crazyflie.
+        Must be called always after __init__ and reset.
         """
         if hasattr(self, "getBasicTimeStep"):
             self.timestep = int(self.getBasicTimeStep())
@@ -291,10 +292,52 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.range_right is not None and hasattr(self.range_right, "enable"):
             self.range_right.enable(self.timestep)
 
+        # Reset state and odometry variables
+        self.episode_step = 0
+        self.episode_score = 0.0
+        self.first_time = True
+        self.past_time = 0.0
+
+        self.x_global = 0.0
+        self.y_global = 0.0
+        self.z_global = 0.0
+        self.past_x_global = 0.0
+        self.past_y_global = 0.0
+        self.past_z_global = 0.0
+        self.x_pos_initial = 0.0
+        self.y_pos_initial = 0.0
+
+        self.v_x = 0.0
+        self.v_y = 0.0
+        self.v_z = 0.0
+        self.roll = 0.0
+        self.pitch = 0.0
+        self.yaw = 0.0
+        self.yaw_rate = 0.0
+        self.alt = 0.0
+        self.lineal_velocity = np.zeros(3, dtype=np.float32)
+        self.angular_velocity = np.zeros(3, dtype=np.float32)
+
+        self.dist_front = 2000.0
+        self.dist_back = 2000.0
+        self.dist_right = 2000.0
+        self.dist_left = 2000.0
+
+        self.height_desired = self.HEIGHT_INITIAL
+        self.the_drone_took_off = False
+        self.timestamp_take_off = 0.0
+        self.is_success = False
+        self.terminated = False
+        self.truncated = False
+        self.current_action = np.zeros(4, dtype=np.float32)
+        self.prev_action = np.zeros(4, dtype=np.float32)
+        self.drone_trajectory_file = None
+
         # Reference to the Crazyflie robot
         self.robot = self.getFromDef("crazyflie") if hasattr(self, "getFromDef") else None
 
         # Motors
+        self.motors = [None for _ in range(4)]
         self._setup_motors()
 
     def _setup_motors(self):
@@ -601,17 +644,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
         super().step(self.timestep)
 
-        self.episode_step = 0
-        self.episode_score = 0.0
-        self.the_drone_took_off = False
-        self.first_time = True
-        self.is_success = False
-        self.terminated = False
-        self.truncated = False
-        self.height_desired = self.HEIGHT_INITIAL
-        self.current_action = np.zeros(4, dtype=np.float32)
-        self.prev_action = np.zeros(4, dtype=np.float32)
-
         self._initialization()
         super().step(self.timestep)
 
@@ -622,6 +654,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             timestamp = int(time.time())
             file_name = f"trajectory_x_{self.x_global:.2f}_y_{self.y_global:.2f}_t_{timestamp}.csv"
             self.set_trajectory_file_name(file_name)
+
+        self.x_pos_initial = self.x_global
+        self.y_pos_initial = self.y_global
 
         obs = self.get_observations()
         info = self.get_info()
