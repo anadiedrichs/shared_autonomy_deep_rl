@@ -273,9 +273,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         if self.gyro is not None and hasattr(self.gyro, "enable"):
             self.gyro.enable(self.timestep)
 
-        self.camera = self.getDevice("camera") if hasattr(self, "getDevice") else None
-        if self.camera is not None and hasattr(self.camera, "enable"):
-            self.camera.enable(self.timestep)
+        # self.camera = self.getDevice("camera") if hasattr(self, "getDevice") else None
+        # if self.camera is not None and hasattr(self.camera, "enable"):
+        #     self.camera.enable(self.timestep)
 
         self.range_front = self.getDevice("range_front") if hasattr(self, "getDevice") else None
         if self.range_front is not None and hasattr(self.range_front, "enable"):
