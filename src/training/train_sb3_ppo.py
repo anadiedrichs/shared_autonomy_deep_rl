@@ -27,9 +27,9 @@ from src.envs.corner_env_continuous import CornerEnvContinuous
 def train_sb3_ppo(
     total_timesteps: int = 100_000,
     seed: int = 7,
-    learning_rate: float = 1e-4,
+    learning_rate: float = 3e-4,
     gamma: float = 0.97,
-    ent_coef: float = 0.01,
+    ent_coef: float = 0.0,
     corner_name: str = "cone_1",
     max_episode_steps: int = 1_000,
     log_dir: str = "./logs/ppo",
@@ -201,13 +201,13 @@ def parse_args():
         default=True,
         help="Muestra u oculta la barra de progreso en consola (requiere rich y tqdm).",
     )
-    parser.add_argument("--lr", type=float, default=1e-4, help="Tasa de aprendizaje.")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Tasa de aprendizaje (por defecto 3e-4).")
     parser.add_argument("--gamma", type=float, default=0.97, help="Factor de descuento gamma.")
     parser.add_argument(
         "--ent-coef",
         type=float,
-        default=0.01,
-        help="Coeficiente de entropía para fomentar la exploración continua (por defecto 0.01).",
+        default=0.0,
+        help="Coeficiente de entropía para exploración continua (por defecto 0.0).",
     )
     parser.add_argument(
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo (cone_1)."

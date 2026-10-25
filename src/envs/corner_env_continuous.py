@@ -9,7 +9,11 @@ from math import sqrt
 import numpy as np
 
 from src.envs.drone_robot_supervisor import DroneRobotSupervisor
-from src.rewards.reward_goal_directed import compute_goal_directed_reward
+from src.rewards.reward_goal_directed import (
+    compute_goal_directed_reward,
+    walls_proximity_penalization,
+)
+from src.utils.utilities import normalize_to_range
 
 
 class CornerEnvContinuous(DroneRobotSupervisor):
@@ -208,54 +212,51 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def get_reward(self) -> float:
         """
-        Computes the reward for the current step via compute_goal_directed_reward.
+        Computes the normalized reward in [-1.0, 1.0] for the current step,
+        following the 2025 thesis formulation (SimpleCornerEnvShaped20 / SimpleCornerEnvRS10):
+        - Terminal goal reached: +20.0 -> +1.0
+        - Terminal fall / out of bounds / score truncation: -20.0 -> -1.0
+        - Wall proximity (only when obs_min <= MIN_DIST_OBSTACLES = 100 mm): linear penalty 50*x - 10
+        - Otherwise: differential progress 2000 * (prev_dist - dist)
 
         Returns:
-            float: Unnormalized continuous reward.
+            float: Normalized continuous reward in [-1.0, 1.0].
         """
         self.dist_min_target = self.get_distance_to_target()
 
-        # Minimum distance to obstacles in meters
-        obs_min_mm = min(
+        # Minimum distance to walls in millimeters
+        obs_min = min(
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
         )
-        d_min = obs_min_mm / 1000.0
 
-        # Evaluation of terminal events
-        reached = self.achieve_goal()
-        collided = bool(
+        reward = 0.0
+
+        # 1. Drone reaches the target at a safe altitude
+        if self.achieve_goal():
+            reward = 20.0
+
+        # 2. Penalize if the drone is too close to any wall (<= 100 mm = 0.10 m)
+        if obs_min <= self.MIN_DIST_OBSTACLES:
+            reward += walls_proximity_penalization(obs_min / 1000.0)
+
+        # 3. Drone falls, leaves the arena, or exceeds cumulative score bounds
+        if (
             self.alt < 0.10
             or self.is_out_of_bounds()
             or (self.episode_score <= self.MIN_EPISODE_SCORE)
             or (self.episode_score >= self.MAX_EPISODE_SCORE)
-        )
+        ):
+            reward = -20.0
 
-        reward = compute_goal_directed_reward(
-            d_prev=self.prev_dist_min_target,
-            d_now=self.dist_min_target,
-            action=self.current_action,
-            prev_action=self.prev_action,
-            ang_vel=self.angular_velocity,
-            d_min=d_min,
-            collided=collided,
-            reached=reached,
-            progress_weight=30.0,
-            obstacle_weight=0.5,
-            obstacle_decay=0.10,
-            action_smoothness_weight=0.05,
-            angular_velocity_weight=0.01,
-            time_penalty=0.01,
-            reached_bonus=50.0,
-            collision_penalty=50.0,
-        )
-
-        # Dense inverse-distance guidance (1 / d, scaled by 0.05) from SimpleCornerEnvRS10
-        # so the agent receives a continuous gradient toward the corner from the center (0, 0)
-        if not reached and not collided:
-            reward += 0.05 / max(self.dist_min_target, 0.15)
+        # 4. Otherwise: pure differential progress toward the corner (no static hover reward)
+        if reward == 0.0:
+            reward = 2000.0 * (self.prev_dist_min_target - self.dist_min_target)
 
         self.prev_dist_min_target = self.dist_min_target
-        return float(reward)
+
+        # 5. Normalize reward from [-20, 20] to [-1, 1]
+        normalized_reward = normalize_to_range(reward, -20.0, 20.0, -1.0, 1.0, clip=True)
+        return float(normalized_reward)
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """
