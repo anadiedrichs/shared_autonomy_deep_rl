@@ -135,10 +135,11 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
     # Altitude parameters
     MIN_HEIGHT = 0.20  # Minimum allowed altitude in flight (meters)
-    MAX_HEIGHT = 0.70  # Maximum allowed altitude in flight (meters)
-    HEIGHT_INITIAL = 0.50  # Target altitude after take-off (meters)
+    MAX_HEIGHT = 0.70  # Target altitude threshold for take-off (meters)
+    MAX_FLIGHT_HEIGHT = 1.00  # Maximum allowed altitude in flight (meters)
+    HEIGHT_INITIAL = 0.30  # Initial target altitude at the start of take-off (meters)
     HEIGHT_INCREASE = 0.05  # Increment in take-off ramp (meters)
-    WAITING_TIME = 1.0  # Stabilization time in seconds after take-off
+    WAITING_TIME = 3.0  # Stabilization time in seconds after take-off
 
     def __init__(
         self,
@@ -568,7 +569,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         # Relative altitude variation (Option 2: vertical velocity integrated with dt)
         delta_h = float(act[3] * self.MAX_VERTICAL_VELOCITY * self.dt)
         self.height_desired = float(
-            np.clip(self.height_desired + delta_h, self.MIN_HEIGHT, self.MAX_HEIGHT)
+            np.clip(self.height_desired + delta_h, self.MIN_HEIGHT, self.MAX_FLIGHT_HEIGHT)
         )
 
         return vx_cmd, vy_cmd, yaw_rate_cmd, self.height_desired

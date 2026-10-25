@@ -23,7 +23,6 @@ class CornerEnvContinuous(DroneRobotSupervisor):
     MIN_DIST_OBSTACLES = 100  # Minimum distance to walls in mm (100 mm = 0.10 m)
     MIN_EPISODE_SCORE = -1_000.0  # Minimum cumulative score before truncation
     MAX_EPISODE_SCORE = 1_000.0  # Maximum cumulative score before truncation
-    HEIGHT_INITIAL = 0.50  # Target altitude after take-off (meters)
 
     # Spatial bounds of the room (2x2 meters centered at [0, 0])
     X_MIN, X_MAX = -1.0, 1.0
