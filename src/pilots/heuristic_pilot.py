@@ -164,7 +164,7 @@ class HeuristicPilot(BasePilot):
             curr_z = 0.1 + (alt_norm + 1.0) / 2.0 * (5.0 - 0.1)
             curr_x = 0.0
             curr_y = 0.0
-            curr_yaw = 0.0
+            curr_yaw = float(np.pi / 2.0)
 
         # 2. Cartesian errors toward the target
         err_x = float(self.target_position[0] - curr_x)

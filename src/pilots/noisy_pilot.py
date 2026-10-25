@@ -34,12 +34,15 @@ class NoisyPilot(BasePilot):
         self.sigma = sigma
         self._rng = np.random.default_rng(seed)
 
-    def _get_base_action(self, observation: np.ndarray) -> np.ndarray:
+    def _get_base_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
         Retrieves the base action proposed by the optimal pilot according to its available interface.
         """
         if hasattr(self.optimal_pilot, "get_action"):
-            act = self.optimal_pilot.get_action(observation)
+            try:
+                act = self.optimal_pilot.get_action(observation, **kwargs)
+            except TypeError:
+                act = self.optimal_pilot.get_action(observation)
         elif hasattr(self.optimal_pilot, "predict"):
             act, _ = self.optimal_pilot.predict(observation, deterministic=True)
         elif hasattr(self.optimal_pilot, "choose_action"):
@@ -50,7 +53,7 @@ class NoisyPilot(BasePilot):
 
         return np.asarray(act, dtype=np.float32)
 
-    def get_action(self, observation: np.ndarray) -> np.ndarray:
+    def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
         Computes the perturbed action by adding Gaussian noise and clipping to [-1.0, 1.0].
 
@@ -60,7 +63,7 @@ class NoisyPilot(BasePilot):
         Returns:
             np.ndarray: 4-dimensional action vector in [-1.0, 1.0].
         """
-        base_action = self._get_base_action(observation)
+        base_action = self._get_base_action(observation, **kwargs)
         noise = self._rng.normal(0.0, self.sigma, size=base_action.shape).astype(np.float32)
         noisy_action = np.clip(base_action + noise, -1.0, 1.0)
         return noisy_action

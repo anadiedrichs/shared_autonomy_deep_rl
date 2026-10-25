@@ -80,7 +80,10 @@ def evaluate_pilot(
 
         while not (terminated or truncated):
             # Deterministic inference according to common BasePilot contract
-            action = pilot.get_action(obs)
+            try:
+                action = pilot.get_action(obs, env=env)
+            except TypeError:
+                action = pilot.get_action(obs)
             obs, reward, terminated, truncated, info = env.step(action)
 
             ep_reward += float(reward)
@@ -201,6 +204,7 @@ def create_pilot_instance(
     copilot_backend: str = "auto",
     residual_scale: float = 1.0,
     base_pilot_type: str = "noisy",
+    env: object | None = None,
 ) -> BasePilot:
     """
     Unified instantiation factory for any pilot in the ecosystem.
@@ -222,6 +226,7 @@ def create_pilot_instance(
         return HeuristicPilot(
             mode=heuristic_mode,
             corner_name=corner,
+            env=env,
         )
     elif pt == "noisy":
         # Optimal base pilot with injected noise
@@ -244,6 +249,7 @@ def create_pilot_instance(
             sigma=sigma,
             p_repeat=p_repeat,
             seed=seed,
+            env=env,
         )
         copilot = ResidualPolicy(
             checkpoint_path=copilot_checkpoint,
@@ -393,6 +399,7 @@ if __name__ == "__main__":
         copilot_backend=args.copilot_backend,
         residual_scale=args.residual_scale,
         base_pilot_type=args.base_pilot_type,
+        env=env,
     )
 
     try:

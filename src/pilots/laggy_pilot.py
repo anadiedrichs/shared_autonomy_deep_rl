@@ -44,12 +44,15 @@ class LaggyPilot(BasePilot):
         """
         self.last_action = None
 
-    def _get_base_action(self, observation: np.ndarray) -> np.ndarray:
+    def _get_base_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
         Retrieves the base action proposed by the optimal pilot according to its available interface.
         """
         if hasattr(self.optimal_pilot, "get_action"):
-            act = self.optimal_pilot.get_action(observation)
+            try:
+                act = self.optimal_pilot.get_action(observation, **kwargs)
+            except TypeError:
+                act = self.optimal_pilot.get_action(observation)
         elif hasattr(self.optimal_pilot, "predict"):
             act, _ = self.optimal_pilot.predict(observation, deterministic=True)
         elif hasattr(self.optimal_pilot, "choose_action"):
@@ -60,7 +63,7 @@ class LaggyPilot(BasePilot):
 
         return np.asarray(act, dtype=np.float32)
 
-    def get_action(self, observation: np.ndarray) -> np.ndarray:
+    def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
         Returns the action to execute. If a delay occurs, repeats the previous action;
         otherwise, queries the optimal pilot and updates the history.
@@ -74,7 +77,7 @@ class LaggyPilot(BasePilot):
         if self.last_action is not None and (self._rng.random() < self.p_repeat):
             return self.last_action.copy()
 
-        action = self._get_base_action(observation)
+        action = self._get_base_action(observation, **kwargs)
         self.last_action = action.copy()
         return action
 
