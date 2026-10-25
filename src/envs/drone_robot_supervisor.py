@@ -129,9 +129,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     # Physical flight and control bounds
     MAX_FORWARD_VELOCITY = 0.09  # Maximum longitudinal velocity in m/s
     MAX_LATERAL_VELOCITY = 0.09  # Maximum lateral velocity in m/s
-    MAX_YAW_RATE = 0.5  # Maximum yaw angular velocity in rad/s (dynamics)
-    MAX_VERTICAL_VELOCITY = 0.05  # Maximum ascent/descent velocity in m/s
+    MAX_YAW_RATE = 0.01  # Maximum yaw angular velocity in rad/s (aligned with original thesis)
+    MAX_VERTICAL_VELOCITY = 0.02  # Maximum ascent/descent velocity in m/s
     MAX_OBS_VELOCITY = 1.0  # Physical velocity range for observation normalization (m/s)
+    ACTION_SMOOTHING_ALPHA = 0.70  # First-order low-pass filter factor for continuous commands
 
     # Altitude parameters
     MIN_HEIGHT = 0.20  # Minimum allowed altitude in flight (meters)
@@ -220,6 +221,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.truncated = False
         self.current_action = np.zeros(4, dtype=np.float32)
         self.prev_action = np.zeros(4, dtype=np.float32)
+        self.smoothed_action = np.zeros(4, dtype=np.float32)
 
         # Trajectory logging
         self.drone_trajectory_path = None
@@ -332,6 +334,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
         self.truncated = False
         self.current_action = np.zeros(4, dtype=np.float32)
         self.prev_action = np.zeros(4, dtype=np.float32)
+        self.smoothed_action = np.zeros(4, dtype=np.float32)
         self.drone_trajectory_file = None
 
         # Reference to the Crazyflie robot
@@ -585,9 +588,14 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
             tuple: (observation, reward, terminated, truncated, info)
         """
         self.episode_step += 1
-        self.current_action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+        raw_action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+        self.current_action = raw_action
 
-        vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd = self._denormalize_action(action)
+        # Apply exponential smoothing so continuous exploration noise does not spike PID derivatives
+        alpha = float(self.ACTION_SMOOTHING_ALPHA)
+        self.smoothed_action = alpha * self.smoothed_action + (1.0 - alpha) * raw_action
+
+        vx_cmd, vy_cmd, yaw_rate_cmd, height_cmd = self._denormalize_action(self.smoothed_action)
 
         # Compute motor power with the velocity and altitude PID
         if self.PID_crazyflie is not None:
@@ -647,6 +655,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
 
         self._initialization()
         super().step(self.timestep)
+
+        # Prime sensor observations and PID states before the first take_off step
+        self.get_observations()
+        self.past_time = self.getTime() if hasattr(self, "getTime") else 0.0
+        self.past_x_global = self.x_global
+        self.past_y_global = self.y_global
+        self.past_z_global = self.z_global
+        if self.PID_crazyflie is not None:
+            self.PID_crazyflie.past_alt_error = self.height_desired - self.alt
 
         self.take_off()
 

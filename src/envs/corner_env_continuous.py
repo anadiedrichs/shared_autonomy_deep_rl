@@ -216,9 +216,10 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         self.dist_min_target = self.get_distance_to_target()
 
         # Minimum distance to obstacles in meters
-        d_min = min(
+        obs_min_mm = min(
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
-        ) / 1000.0
+        )
+        d_min = obs_min_mm / 1000.0
 
         # Evaluation of terminal events
         reached = self.achieve_goal()
@@ -248,8 +249,13 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             collision_penalty=50.0,
         )
 
+        # Dense inverse-distance guidance (1 / d, scaled by 0.05) from SimpleCornerEnvRS10
+        # so the agent receives a continuous gradient toward the corner from the center (0, 0)
+        if not reached and not collided:
+            reward += 0.05 / max(self.dist_min_target, 0.15)
+
         self.prev_dist_min_target = self.dist_min_target
-        return reward
+        return float(reward)
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """

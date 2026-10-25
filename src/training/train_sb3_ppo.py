@@ -100,8 +100,10 @@ def train_sb3_ppo(
     env = Monitor(raw_env, filename=os.path.join(log_dir, "monitor.csv"))
 
     # Neural architecture configuration: 2 hidden layers of 64 neurons (Params2)
+    # log_std_init=-0.5 (~0.61 std) avoids extreme [-1, 1] bang-bang saturation during early exploration
     policy_kwargs = dict(
-        net_arch=dict(pi=[64, 64], vf=[64, 64])
+        net_arch=dict(pi=[64, 64], vf=[64, 64]),
+        log_std_init=-0.5,
     )
 
     print(

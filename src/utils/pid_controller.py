@@ -72,9 +72,9 @@ class pid_velocity_fixed_height_controller:
 
         # 1. Horizontal velocity control (generates desired tilt angles: pitch and roll)
         vx_error = desired_vx - actual_vx
-        vx_deriv = (vx_error - self.past_vx_error) / dt
+        vx_deriv = np.clip((vx_error - self.past_vx_error) / dt, -2.0, 2.0)
         vy_error = desired_vy - actual_vy
-        vy_deriv = (vy_error - self.past_vy_error) / dt
+        vy_deriv = np.clip((vy_error - self.past_vy_error) / dt, -2.0, 2.0)
 
         desired_pitch = gains["kp_vel_xy"] * np.clip(vx_error, -1.0, 1.0) + gains["kd_vel_xy"] * vx_deriv
         desired_roll = -gains["kp_vel_xy"] * np.clip(vy_error, -1.0, 1.0) - gains["kd_vel_xy"] * vy_deriv
