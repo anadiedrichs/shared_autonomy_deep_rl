@@ -70,28 +70,26 @@ def test_noisy_pilot_with_noise_and_clipping():
     assert np.std(action_array[:, 0]) > 0.05
 
 
-def test_laggy_pilot_always_repeat():
-    """Validate that with p_repeat=1.0 it always repeats the first obtained action."""
+def test_laggy_pilot_always_drop():
+    """Validate that with p_repeat=1.0 every command is dropped (neutral zero action)."""
     base_pilot = DummyOptimalPilot()
     laggy_pilot = LaggyPilot(optimal_pilot=base_pilot, p_repeat=1.0, seed=42)
 
     obs1 = np.array([1.0] + [0.0] * 10, dtype=np.float32)
-    first_action = laggy_pilot.get_action(obs1)
-
-    # Second and third steps with different observations
     obs2 = np.array([5.0] + [0.0] * 10, dtype=np.float32)
     obs3 = np.array([10.0] + [0.0] * 10, dtype=np.float32)
 
-    assert np.allclose(laggy_pilot.get_action(obs2), first_action)
-    assert np.allclose(laggy_pilot.get_action(obs3), first_action)
-    assert base_pilot.call_count == 1  # Must not query the optimal pilot again
+    for obs in (obs1, obs2, obs3):
+        act = laggy_pilot.get_action(obs)
+        assert act.shape == (4,)
+        assert np.allclose(act, np.zeros(4, dtype=np.float32))
 
-    # Upon calling reset(), it must take a new action
+    assert base_pilot.call_count == 0  # Dropped steps must not query the optimal pilot
+    assert np.allclose(laggy_pilot.last_action, np.zeros(4, dtype=np.float32))
+
+    # Upon calling reset(), memory returns to the neutral command
     laggy_pilot.reset()
-    assert laggy_pilot.last_action is None
-    new_action = laggy_pilot.get_action(obs2)
-    assert base_pilot.call_count == 2
-    assert np.allclose(laggy_pilot.last_action, new_action)
+    assert np.allclose(laggy_pilot.last_action, np.zeros(4, dtype=np.float32))
 
 
 def test_laggy_pilot_never_repeat():
@@ -101,9 +99,30 @@ def test_laggy_pilot_never_repeat():
 
     obs = np.zeros(11, dtype=np.float32)
     for _ in range(5):
-        laggy_pilot.get_action(obs)
+        act = laggy_pilot.get_action(obs)
+        assert np.allclose(act, base_pilot.fixed_action)
+        assert np.allclose(laggy_pilot.last_action, act)
 
     assert base_pilot.call_count == 5
+
+
+def test_laggy_pilot_drop_rate_matches_probability():
+    """Validate that the fraction of dropped (zero) commands matches p_repeat."""
+    base_pilot = DummyOptimalPilot()
+    laggy_pilot = LaggyPilot(optimal_pilot=base_pilot, p_repeat=0.4, seed=123)
+
+    obs = np.zeros(11, dtype=np.float32)
+    n_steps = 5000
+    n_dropped = 0
+    for _ in range(n_steps):
+        act = laggy_pilot.get_action(obs)
+        if np.allclose(act, 0.0):
+            n_dropped += 1
+        else:
+            assert np.allclose(act, base_pilot.fixed_action)
+
+    assert abs(n_dropped / n_steps - 0.4) < 0.03
+    assert base_pilot.call_count == n_steps - n_dropped
 
 
 def test_laggy_pilot_invalid_probability():
@@ -217,8 +236,9 @@ if __name__ == "__main__":
     test_base_pilot_inheritance_and_interface()
     test_noisy_pilot_zero_noise()
     test_noisy_pilot_with_noise_and_clipping()
-    test_laggy_pilot_always_repeat()
+    test_laggy_pilot_always_drop()
     test_laggy_pilot_never_repeat()
+    test_laggy_pilot_drop_rate_matches_probability()
     test_laggy_pilot_invalid_probability()
     test_optimal_pilot_dummy()
     test_optimal_pilot_unsupported_backend()

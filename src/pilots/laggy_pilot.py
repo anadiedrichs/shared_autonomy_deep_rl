@@ -2,8 +2,15 @@
 """
 Synthetic pilot with reaction delay (LaggyPilot).
 
-Simulates human response time or latency by repeating the action executed in the
-previous step with probability 'p_repeat' (alpha parameter from the thesis).
+Simulates human response time, latency, or teleoperation packet loss in continuous
+control. With probability 'p_repeat' (alpha parameter from the thesis) the command
+for the current step is dropped and a neutral action (zeros) is emitted instead,
+so the drone receives no motion command during that cycle.
+
+Note: in the 2025 discrete formulation the delay repeated the previous action. In
+continuous control with a smoothness regularizer the optimal policy already satisfies
+a_t ~= a_{t-1}, so repeating the previous action has no measurable effect. Dropping
+the command makes the effective progress scale with (1 - p_repeat).
 """
 
 import numpy as np
@@ -13,7 +20,7 @@ from src.pilots.base_pilot import BasePilot
 
 class LaggyPilot(BasePilot):
     """
-    Synthetic pilot that introduces temporal dependency by occasionally repeating the previous action.
+    Synthetic pilot that occasionally drops its command, emitting a neutral action.
     """
 
     def __init__(
@@ -27,7 +34,8 @@ class LaggyPilot(BasePilot):
 
         Args:
             optimal_pilot: Instance of the base or optimal pilot.
-            p_repeat: Probability of repeating the last continuous action (between 0.0 and 1.0).
+            p_repeat: Probability of dropping the command at each step (between 0.0 and 1.0).
+                The name is kept for backward compatibility with the CLI and thesis notation.
             seed: Seed for the independent random number generator.
         """
         if not (0.0 <= p_repeat <= 1.0):
@@ -36,13 +44,13 @@ class LaggyPilot(BasePilot):
         self.optimal_pilot = optimal_pilot
         self.p_repeat = float(p_repeat)
         self._rng = np.random.default_rng(seed)
-        self.last_action: np.ndarray | None = None
+        self.last_action: np.ndarray = np.zeros(4, dtype=np.float32)
 
     def reset(self):
         """
-        Resets the pilot's memory (forgets the last recorded action).
+        Resets the pilot's memory: the drone starts from a neutral (zero) command.
         """
-        self.last_action = None
+        self.last_action = np.zeros(4, dtype=np.float32)
 
     def _get_base_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
@@ -65,8 +73,9 @@ class LaggyPilot(BasePilot):
 
     def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
-        Returns the action to execute. If a delay occurs, repeats the previous action;
-        otherwise, queries the optimal pilot and updates the history.
+        Returns the action to execute. If a delay occurs, the command is dropped and a
+        neutral action (zeros) is returned without querying the optimal pilot; otherwise,
+        queries the optimal pilot.
 
         Args:
             observation: Environment observation vector.
@@ -74,10 +83,11 @@ class LaggyPilot(BasePilot):
         Returns:
             np.ndarray: Continuous action vector in [-1.0, 1.0].
         """
-        if self.last_action is not None and (self._rng.random() < self.p_repeat):
-            return self.last_action.copy()
+        if self._rng.random() < self.p_repeat:
+            action = np.zeros(4, dtype=np.float32)
+        else:
+            action = self._get_base_action(observation, **kwargs)
 
-        action = self._get_base_action(observation, **kwargs)
         self.last_action = action.copy()
         return action
 
