@@ -219,8 +219,8 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             * Action smoothness regularizer over (vx, vy, yaw_rate, vz): -0.5 * ||a_t - a_{t-1}||_2
             * Wall proximity (only when obs_min <= MIN_DIST_OBSTACLES = 100 mm): 50*x - 10
         - Terminal bonuses/penalties:
-            * Goal reached (achieve_goal): +50.0
-            * Crash, out of bounds, score truncation, or timeout: -50.0
+            * Goal reached (achieve_goal): +20.0
+            * Crash, out of bounds, score truncation, or timeout: -5.0
 
         Returns:
             float: Total reward for the current step.
@@ -255,7 +255,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
         # 4. Terminal bonuses and penalties
         terminal_bonus = 0.0
         if self.achieve_goal():
-            terminal_bonus = 50.0
+            terminal_bonus = 20.0
         elif (
             self.alt < 0.10
             or self.is_out_of_bounds()
@@ -263,7 +263,7 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             or (self.episode_score >= self.MAX_EPISODE_SCORE)
             or (self.episode_step >= self.max_episode_steps)
         ):
-            terminal_bonus = -50.0
+            terminal_bonus = -5.0
 
         return float(step_reward + terminal_bonus)
 

@@ -129,7 +129,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env if gym is not None else object):
     # Physical flight and control bounds
     MAX_FORWARD_VELOCITY = 0.09  # Maximum longitudinal velocity in m/s
     MAX_LATERAL_VELOCITY = 0.09  # Maximum lateral velocity in m/s
-    MAX_YAW_RATE = 0.01  # Maximum yaw angular velocity in rad/s (aligned with original thesis)
+    MAX_YAW_RATE = 0.15  # Maximum yaw angular velocity in rad/s (~8.6 deg/s)
     MAX_VERTICAL_VELOCITY = 0.02  # Maximum ascent/descent velocity in m/s
     MAX_OBS_VELOCITY = 1.0  # Physical velocity range for observation normalization (m/s)
     ACTION_SMOOTHING_ALPHA = 0.70  # First-order low-pass filter factor for continuous commands
