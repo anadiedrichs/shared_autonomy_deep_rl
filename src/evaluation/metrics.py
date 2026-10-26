@@ -57,6 +57,7 @@ def evaluate_pilot(
     successes: list[bool] = []
     terminations: list[str] = []
     final_distances: list[float] = []
+    final_altitudes_mm: list[float] = []
 
     rng = np.random.default_rng(seed)
 
@@ -114,13 +115,15 @@ def evaluate_pilot(
         successes.append(is_success)
         terminations.append(term_reason)
         final_distances.append(final_dist)
+        final_alt_mm = float(getattr(env, "alt", getattr(env, "z_global", info.get("altitude", 0.0)))) * 1000.0
+        final_altitudes_mm.append(round(final_alt_mm, 2))
 
         if verbose >= 1:
             icon = "✔ ÉXITO" if is_success else f"✘ FIN ({term_reason})"
             print(
                 f" Episodio {ep:3d}/{n_episodes}: {icon:15s} | "
                 f"Pasos: {ep_steps:4d} | Recompensa: {ep_reward:8.2f} | "
-                f"Dist. Final: {final_dist:.3f}m"
+                f"Dist. Final: {final_dist:.3f}m | Alt. Final: {final_alt_mm:.1f}mm"
             )
 
     # Compute aggregate statistics
@@ -140,11 +143,14 @@ def evaluate_pilot(
         "length_std": float(np.std(lengths)) if lengths else 0.0,
         "final_distance_mean": float(np.mean(final_distances)) if final_distances else 0.0,
         "final_distance_std": float(np.std(final_distances)) if final_distances else 0.0,
+        "final_altitude_mean_mm": float(np.mean(final_altitudes_mm)) if final_altitudes_mm else 0.0,
+        "final_altitude_std_mm": float(np.std(final_altitudes_mm)) if final_altitudes_mm else 0.0,
         "rewards": rewards,
         "lengths": lengths,
         "successes": successes,
         "terminations": terminations,
         "final_distances": final_distances,
+        "final_altitudes_mm": final_altitudes_mm,
     }
 
     if verbose >= 1:
@@ -156,6 +162,7 @@ def evaluate_pilot(
         print(f"  Recompensa Media               : {metrics_summary['reward_mean']:.2f} ± {metrics_summary['reward_std']:.2f}")
         print(f"  Longitud Media (pasos)         : {metrics_summary['length_mean']:.1f} ± {metrics_summary['length_std']:.1f}")
         print(f"  Distancia Final Media          : {metrics_summary['final_distance_mean']:.3f}m ± {metrics_summary['final_distance_std']:.3f}m")
+        print(f"  Altitud Final Media            : {metrics_summary['final_altitude_mean_mm']:.1f}mm ± {metrics_summary['final_altitude_std_mm']:.1f}mm")
         print(f"{'='*65}\n")
 
     # Optional export to CSV file
@@ -171,6 +178,7 @@ def evaluate_pilot(
             "success": successes,
             "termination": terminations,
             "final_distance": final_distances,
+            "final_altitude_mm": final_altitudes_mm,
         }
 
         if pd is not None:
@@ -181,9 +189,9 @@ def evaluate_pilot(
             import csv
             with open(save_csv_path, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(["episode", "reward", "length", "success", "termination", "final_distance"])
+                writer.writerow(["episode", "reward", "length", "success", "termination", "final_distance", "final_altitude_mm"])
                 for i in range(total_eps):
-                    writer.writerow([i + 1, rewards[i], lengths[i], successes[i], terminations[i], final_distances[i]])
+                    writer.writerow([i + 1, rewards[i], lengths[i], successes[i], terminations[i], final_distances[i], final_altitudes_mm[i]])
 
         if verbose >= 1:
             print(f"[Métricas] Resultados guardados en: {save_csv_path}")
