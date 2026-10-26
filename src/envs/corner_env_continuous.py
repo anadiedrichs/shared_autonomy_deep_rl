@@ -212,15 +212,18 @@ class CornerEnvContinuous(DroneRobotSupervisor):
 
     def get_reward(self) -> float:
         """
-        Computes the normalized reward in [-1.0, 1.0] for the current step,
-        following the 2025 thesis formulation (SimpleCornerEnvShaped20 / SimpleCornerEnvRS10):
-        - Terminal goal reached: +20.0 -> +1.0
-        - Terminal fall / out of bounds / score truncation: -20.0 -> -1.0
-        - Wall proximity (only when obs_min <= MIN_DIST_OBSTACLES = 100 mm): linear penalty 50*x - 10
-        - Otherwise: differential progress 2000 * (prev_dist - dist)
+        Computes the step reward normalized in [-1.0, 1.0] plus terminal bonuses/penalties:
+        - Dense step terms (in [-20, 20] scale, normalized to [-1, 1]):
+            * Differential progress: 2000.0 * (prev_dist - dist)
+            * Time penalty per step: -1.0
+            * Action smoothness regularizer over (vx, vy, yaw_rate, vz): -0.5 * ||a_t - a_{t-1}||_2
+            * Wall proximity (only when obs_min <= MIN_DIST_OBSTACLES = 100 mm): 50*x - 10
+        - Terminal bonuses/penalties:
+            * Goal reached (achieve_goal): +50.0
+            * Crash, out of bounds, score truncation, or timeout: -50.0
 
         Returns:
-            float: Normalized continuous reward in [-1.0, 1.0].
+            float: Total reward for the current step.
         """
         self.dist_min_target = self.get_distance_to_target()
 
@@ -229,34 +232,40 @@ class CornerEnvContinuous(DroneRobotSupervisor):
             self.dist_front, self.dist_back, self.dist_right, self.dist_left
         )
 
-        reward = 0.0
+        # 1. Dense step reward in raw [-20, 20] scale:
+        #    Progress + time penalty + action smoothness regularizer (vx, vy, yaw_rate, vz)
+        progress_term = 2000.0 * (self.prev_dist_min_target - self.dist_min_target)
+        time_penalty = -1.0
+        action_diff_norm = float(np.linalg.norm(self.current_action - self.prev_action))
+        smoothness_penalty = -0.5 * action_diff_norm
 
-        # 1. Drone reaches the target at a safe altitude
-        if self.achieve_goal():
-            reward = 20.0
+        raw_step_reward = progress_term + time_penalty + smoothness_penalty
 
         # 2. Penalize if the drone is too close to any wall (<= 100 mm = 0.10 m)
         if obs_min <= self.MIN_DIST_OBSTACLES:
-            reward += walls_proximity_penalization(obs_min / 1000.0)
+            raw_step_reward += walls_proximity_penalization(obs_min / 1000.0)
 
-        # 3. Drone falls, leaves the arena, or exceeds cumulative score bounds
-        if (
+        self.prev_dist_min_target = self.dist_min_target
+
+        # 3. Normalize dense step reward from [-20, 20] to [-1, 1]
+        step_reward = normalize_to_range(
+            raw_step_reward, -20.0, 20.0, -1.0, 1.0, clip=True
+        )
+
+        # 4. Terminal bonuses and penalties
+        terminal_bonus = 0.0
+        if self.achieve_goal():
+            terminal_bonus = 50.0
+        elif (
             self.alt < 0.10
             or self.is_out_of_bounds()
             or (self.episode_score <= self.MIN_EPISODE_SCORE)
             or (self.episode_score >= self.MAX_EPISODE_SCORE)
+            or (self.episode_step >= self.max_episode_steps)
         ):
-            reward = -20.0
+            terminal_bonus = -50.0
 
-        # 4. Otherwise: pure differential progress toward the corner (no static hover reward)
-        if reward == 0.0:
-            reward = 2000.0 * (self.prev_dist_min_target - self.dist_min_target)
-
-        self.prev_dist_min_target = self.dist_min_target
-
-        # 5. Normalize reward from [-20, 20] to [-1, 1]
-        normalized_reward = normalize_to_range(reward, -20.0, 20.0, -1.0, 1.0, clip=True)
-        return float(normalized_reward)
+        return float(step_reward + terminal_bonus)
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         """
