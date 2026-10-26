@@ -11,6 +11,11 @@ import argparse
 import os
 import sys
 
+# RLtools refuses to link Intel MKL when PyTorch is already imported (e.g. via
+# torch.utils.tensorboard). Disable MKL before rltools is loaded to avoid the
+# "PyTorch is imported which is known to cause issues..." RuntimeError.
+os.environ.setdefault("RL_TOOLS_DISABLE_MKL", "1")
+
 # Ensure the project root is in PYTHONPATH
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
