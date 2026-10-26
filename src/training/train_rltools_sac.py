@@ -10,6 +10,8 @@ a C/C++ header (.h) for embedded deployment on the Crazyflie.
 import argparse
 import csv
 import os
+import re
+import select
 import sys
 import time
 import numpy as np
@@ -185,6 +187,74 @@ def make_env_factory(
     return env_factory
 
 
+class CStdoutTee:
+    """
+    Captures C++ stdout output (e.g. from RLtools log statements) while
+    simultaneously forwarding it to the real stdout so console logs remain intact.
+    Extracts periodic evaluation returns: 'Mean return: <float>'.
+    """
+
+    def __init__(self):
+        self.enabled = False
+        try:
+            self.orig_stdout_fd = os.dup(1)
+            self.pipe_r, self.pipe_w = os.pipe()
+            os.dup2(self.pipe_w, 1)
+            self.buffer = ""
+            self.enabled = True
+        except Exception:
+            self.enabled = False
+
+    def read_eval_returns(self) -> list[float]:
+        if not self.enabled:
+            return []
+        try:
+            import ctypes
+            libc = ctypes.CDLL(None)
+            libc.fflush(None)
+        except Exception:
+            pass
+        sys.stdout.flush()
+        returns = []
+        try:
+            while True:
+                r, _, _ = select.select([self.pipe_r], [], [], 0.0)
+                if not r:
+                    break
+                chunk = os.read(self.pipe_r, 4096).decode("utf-8", errors="ignore")
+                if not chunk:
+                    break
+                os.write(self.orig_stdout_fd, chunk.encode("utf-8"))
+                self.buffer += chunk
+
+            matches = re.findall(
+                r"Mean return:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", self.buffer
+            )
+            for m in matches:
+                try:
+                    returns.append(float(m))
+                except ValueError:
+                    pass
+            self.buffer = ""
+        except Exception:
+            pass
+        return returns
+
+    def close(self):
+        if not self.enabled:
+            return
+        try:
+            sys.stdout.flush()
+            os.dup2(self.orig_stdout_fd, 1)
+            os.close(self.orig_stdout_fd)
+            os.close(self.pipe_w)
+            os.close(self.pipe_r)
+        except Exception:
+            pass
+        finally:
+            self.enabled = False
+
+
 def train_rltools_sac(
     max_steps: int = 100_000,
     seed: int = 7,
@@ -266,25 +336,66 @@ def train_rltools_sac(
     )
     state = sac.State(seed)
 
+    best_eval_return = float("-inf")
+    best_step = None
+    best_policy_c_header = None
+    best_header_path = header_save_path.replace(".h", "_best.h")
+    final_header_path = header_save_path.replace(".h", "_final.h")
+
+    stdout_tee = CStdoutTee()
     print(f"[RLtools-SAC] Iniciando bucle de entrenamiento (hasta {max_steps} pasos)...")
     step_count = 0
     finished = False
 
-    while not finished and step_count < max_steps:
-        finished = state.step()
-        step_count += 1
+    try:
+        while not finished and step_count < max_steps:
+            finished = state.step()
+            step_count += 1
 
-        if step_count % 10_000 == 0 or finished:
-            if verbose:
-                print(f"[RLtools-SAC] Progreso: paso {step_count}/{max_steps} completado.")
-            if writer is not None:
-                writer.add_scalar("train/step", step_count, step_count)
+            # Check for periodic evaluation outputs from RLtools C++ engine
+            eval_returns = stdout_tee.read_eval_returns()
+            for ret in eval_returns:
+                if writer is not None:
+                    writer.add_scalar("evaluation/mean_return", ret, step_count)
+                if ret > best_eval_return:
+                    best_eval_return = ret
+                    best_step = step_count
+                    best_policy_c_header = state.export_policy()
 
-    print(f"[RLtools-SAC] Entrenamiento finalizado. Exportando política a {header_save_path}...")
-    policy_c_header = state.export_policy()
+                    # Save best model to primary path and dedicated best checkpoint path
+                    with open(header_save_path, "w", encoding="utf-8") as f:
+                        f.write(best_policy_c_header)
+                    with open(best_header_path, "w", encoding="utf-8") as f:
+                        f.write(best_policy_c_header)
 
-    with open(header_save_path, "w", encoding="utf-8") as f:
-        f.write(policy_c_header)
+                    if verbose:
+                        print(
+                            f"\n[RLtools-SAC] ★ ¡Nuevo mejor modelo guardado en paso {step_count}! "
+                            f"Retorno medio de evaluación: {ret:.4f} (guardado en {header_save_path})\n"
+                        )
+                    if writer is not None:
+                        writer.add_scalar("evaluation/best_mean_return", best_eval_return, step_count)
+
+            if step_count % 10_000 == 0 or finished:
+                if verbose:
+                    print(f"[RLtools-SAC] Progreso: paso {step_count}/{max_steps} completado.")
+                if writer is not None:
+                    writer.add_scalar("train/step", step_count, step_count)
+    finally:
+        stdout_tee.close()
+
+    print(f"[RLtools-SAC] Entrenamiento finalizado. Exportando política del paso final a {final_header_path}...")
+    final_policy_c_header = state.export_policy()
+    with open(final_header_path, "w", encoding="utf-8") as f:
+        f.write(final_policy_c_header)
+
+    # Ensure primary path has the best checkpoint, fallback to final if no evaluation was superior
+    if best_policy_c_header is None:
+        best_policy_c_header = final_policy_c_header
+        best_step = step_count
+        best_eval_return = 0.0
+        with open(header_save_path, "w", encoding="utf-8") as f:
+            f.write(best_policy_c_header)
 
     if writer is not None:
         writer.close()
@@ -297,8 +408,14 @@ def train_rltools_sac(
     except Exception:
         pass
 
-    print(f"[RLtools-SAC] Header C exportado exitosamente en: {header_save_path}")
-    return state, policy_c_header
+    if verbose:
+        print(
+            f"[RLtools-SAC] Resumen de checkpoints:\n"
+            f"  - Checkpoint óptimo activo: {header_save_path} (paso {best_step}, retorno {best_eval_return:.4f})\n"
+            f"  - Checkpoint mejor guardado: {best_header_path}\n"
+            f"  - Checkpoint paso final:     {final_header_path}"
+        )
+    return state, best_policy_c_header
 
 
 def parse_args():

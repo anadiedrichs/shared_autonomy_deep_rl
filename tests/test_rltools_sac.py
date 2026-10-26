@@ -15,8 +15,27 @@ if project_root not in sys.path:
 
 os.environ["WEBOTS_MOCK"] = "1"
 
-from src.training.train_rltools_sac import make_env_factory
+from src.training.train_rltools_sac import make_env_factory, CStdoutTee
 from src.pilots.optimal_pilot import OptimalPilot
+
+
+def test_c_stdout_tee():
+    """Validate that CStdoutTee intercepts stdout strings and parses Mean return."""
+    tee = CStdoutTee()
+    if not tee.enabled:
+        return
+
+    # Simulate C/C++ logging output
+    import ctypes
+    libc = ctypes.CDLL(None)
+    libc.puts(b"Step: 1000/100000 Mean return: 39.7521 Mean episode length: 71.2")
+    sys.stdout.flush()
+
+    rets = tee.read_eval_returns()
+    tee.close()
+
+    assert len(rets) == 1
+    assert abs(rets[0] - 39.7521) < 1e-3
 
 
 def test_make_env_factory_singleton():
@@ -82,5 +101,6 @@ def test_rltools_sac_workflow_mock():
 
 if __name__ == "__main__":
     test_make_env_factory_singleton()
+    test_c_stdout_tee()
     test_rltools_sac_workflow_mock()
     print("Todos los tests de RLtools SAC pasaron exitosamente.")
