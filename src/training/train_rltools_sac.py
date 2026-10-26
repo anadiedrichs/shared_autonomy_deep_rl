@@ -8,8 +8,11 @@ a C/C++ header (.h) for embedded deployment on the Crazyflie.
 """
 
 import argparse
+import csv
 import os
 import sys
+import time
+import numpy as np
 
 # RLtools refuses to link Intel MKL when PyTorch is already imported (e.g. via
 # torch.utils.tensorboard). Disable MKL before rltools is loaded to avoid the
@@ -29,7 +32,127 @@ except ImportError:
     gym = None
 
 
-def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000):
+class RLtoolsEpisodeMetricsWrapper(gym.Wrapper if gym is not None and hasattr(gym, "Wrapper") else object):
+    """
+    Episode-level metrics wrapper for RLtools training.
+    Captures episode rewards, lengths, and success flags, writing them to:
+    1. monitor.csv (SB3-compatible format: r, l, t)
+    2. TensorBoard scalars (rollout/ep_rew_mean, rollout/ep_len_mean, rollout/success_rate)
+    """
+
+    def __init__(self, env, log_dir: str | None = None, writer=None, verbose: bool = True):
+        if gym is not None and hasattr(gym, "Wrapper"):
+            super().__init__(env)
+        self.env = env
+        self.log_dir = log_dir
+        self.writer = writer
+        self.verbose = verbose
+
+        self.episode_count = 0
+        self.total_env_steps = 0
+        self.episode_reward = 0.0
+        self.episode_length = 0
+        self.start_time = time.time()
+
+        self.recent_rewards: list[float] = []
+        self.recent_successes: list[float] = []
+        self.recent_lengths: list[int] = []
+
+        # Ensure spaces are directly accessible for the pybind11 RLtools layer
+        self.observation_space = getattr(env, "observation_space", None)
+        self.action_space = getattr(env, "action_space", None)
+
+        # Setup CSV writer for monitor.csv (SB3 format)
+        self.csv_file = None
+        self.csv_writer = None
+        if self.log_dir is not None:
+            os.makedirs(self.log_dir, exist_ok=True)
+            csv_path = os.path.join(self.log_dir, "monitor.csv")
+            self.csv_file = open(csv_path, "w", newline="", encoding="utf-8")
+            self.csv_file.write(f'#{{"t_start": {self.start_time}, "env_id": "CornerEnvContinuous"}}\n')
+            self.csv_writer = csv.writer(self.csv_file)
+            self.csv_writer.writerow(["r", "l", "t"])
+            self.csv_file.flush()
+
+    def reset(self, **kwargs):
+        self.episode_reward = 0.0
+        self.episode_length = 0
+        return self.env.reset(**kwargs)
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.total_env_steps += 1
+        self.episode_reward += float(reward)
+        self.episode_length += 1
+
+        if terminated or truncated:
+            self.episode_count += 1
+            is_success = bool(info.get("is_success", False))
+            corner_flag = info.get("corner", "unknown")
+            if is_success:
+                term_reason = "goal"
+            elif corner_flag == "fall":
+                term_reason = "fall"
+            elif corner_flag == "out_of_bounds":
+                term_reason = "out_of_bounds"
+            elif truncated:
+                term_reason = "timeout"
+            else:
+                term_reason = str(corner_flag)
+
+            elapsed_time = time.time() - self.start_time
+            if self.csv_writer is not None:
+                self.csv_writer.writerow(
+                    [round(self.episode_reward, 6), self.episode_length, round(elapsed_time, 4)]
+                )
+                self.csv_file.flush()
+
+            self.recent_rewards.append(self.episode_reward)
+            self.recent_successes.append(1.0 if is_success else 0.0)
+            self.recent_lengths.append(self.episode_length)
+            if len(self.recent_rewards) > 20:
+                self.recent_rewards.pop(0)
+                self.recent_successes.pop(0)
+                self.recent_lengths.pop(0)
+
+            if self.writer is not None:
+                self.writer.add_scalar("rollout/ep_rew", self.episode_reward, self.total_env_steps)
+                self.writer.add_scalar("rollout/ep_len", self.episode_length, self.total_env_steps)
+                self.writer.add_scalar("rollout/is_success", 1.0 if is_success else 0.0, self.total_env_steps)
+                self.writer.add_scalar("rollout/ep_rew_mean", float(np.mean(self.recent_rewards)), self.total_env_steps)
+                self.writer.add_scalar("rollout/ep_len_mean", float(np.mean(self.recent_lengths)), self.total_env_steps)
+                self.writer.add_scalar("rollout/success_rate", float(np.mean(self.recent_successes)), self.total_env_steps)
+
+            if self.verbose:
+                status_icon = "✔ ÉXITO" if is_success else f"✘ {term_reason}"
+                print(
+                    f"[RLtools-SAC] Ep {self.episode_count:3d} ({status_icon}) | "
+                    f"Paso: {self.total_env_steps:6d} | "
+                    f"Rew: {self.episode_reward:7.2f} | "
+                    f"Long: {self.episode_length:4d} | "
+                    f"Dist: {getattr(self.env, 'dist_min_target', 0.0):.2f}m"
+                )
+
+        return obs, reward, terminated, truncated, info
+
+    def close(self):
+        if self.csv_file is not None and not self.csv_file.closed:
+            self.csv_file.close()
+            self.csv_file = None
+        if hasattr(self.env, "close"):
+            return self.env.close()
+
+    def __getattr__(self, name):
+        return getattr(self.env, name)
+
+
+def make_env_factory(
+    corner_name: str = "cone_1",
+    max_episode_steps: int = 1_000,
+    log_dir: str | None = None,
+    writer=None,
+    verbose: bool = True,
+):
     """
     Create the environment factory required by the RLtools interface.
     Uses the singleton/persistent pattern to avoid multiple Webots Supervisor
@@ -40,16 +163,23 @@ def make_env_factory(corner_name: str = "cone_1", max_episode_steps: int = 1_000
     def env_factory():
         nonlocal _env_instance
         if _env_instance is None:
-            _env_instance = CornerEnvContinuous(
+            raw_env = CornerEnvContinuous(
                 corner_name=corner_name,
                 max_episode_steps=max_episode_steps,
                 enable_trajectory_logging=False,
                 verbose=0,
             )
+            rescaled_env = raw_env
             if gym is not None and hasattr(gym, "wrappers"):
-                _env_instance = gym.wrappers.RescaleAction(
-                    _env_instance, min_action=-1.0, max_action=1.0
+                rescaled_env = gym.wrappers.RescaleAction(
+                    raw_env, min_action=np.float32(-1.0), max_action=np.float32(1.0)
                 )
+            _env_instance = RLtoolsEpisodeMetricsWrapper(
+                rescaled_env,
+                log_dir=log_dir,
+                writer=writer,
+                verbose=verbose,
+            )
         return _env_instance
 
     return env_factory
@@ -113,8 +243,15 @@ def train_rltools_sac(
         except ImportError:
             writer = None
 
-    print(f"[RLtools-SAC] Creando fábrica de entorno (esquina: {corner_name})...")
-    env_factory = make_env_factory(corner_name=corner_name, max_episode_steps=max_episode_steps)
+    print(f"[RLtools-SAC] Creando fábrica de entorno con métricas (esquina: {corner_name})...")
+    metrics_log_dir = run_dir if run_dir is not None else log_dir
+    env_factory = make_env_factory(
+        corner_name=corner_name,
+        max_episode_steps=max_episode_steps,
+        log_dir=metrics_log_dir,
+        writer=writer,
+        verbose=verbose,
+    )
 
     print(f"[RLtools-SAC] Inicializando algoritmo SAC con semilla {seed} y gamma {gamma}...")
     eval_interval = min(1_000, max(1, max_steps // 10))
@@ -151,6 +288,14 @@ def train_rltools_sac(
 
     if writer is not None:
         writer.close()
+
+    # Flush CSV logs and close environment
+    try:
+        env_instance = env_factory()
+        if hasattr(env_instance, "close"):
+            env_instance.close()
+    except Exception:
+        pass
 
     print(f"[RLtools-SAC] Header C exportado exitosamente en: {header_save_path}")
     return state, policy_c_header
