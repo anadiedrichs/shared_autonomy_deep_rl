@@ -26,6 +26,47 @@ from src.pilots.noisy_pilot import NoisyPilot
 from src.pilots.optimal_pilot import OptimalPilot
 
 
+try:
+    from stable_baselines3.common.callbacks import BaseCallback
+except ImportError:  # pragma: no cover
+    BaseCallback = object
+
+
+class BestTrainingRewardCallback(BaseCallback):
+    """
+    Saves the best model according to the moving average of training episode rewards.
+
+    Needed because Webots allows a single Robot instance per process, so a separate
+    evaluation environment (as used by EvalCallback) cannot be created.
+    """
+
+    def __init__(self, check_freq: int, window: int, save_dir: str, verbose: int = 1):
+        super().__init__(verbose)
+        self.check_freq = int(check_freq)
+        self.window = max(int(window), 1)
+        self.save_dir = save_dir
+        self.best_mean = -np.inf
+        self.episode_rewards: list[float] = []
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            ep = info.get("episode")
+            if ep is not None:
+                self.episode_rewards.append(float(ep["r"]))
+
+        if self.n_calls % self.check_freq == 0 and len(self.episode_rewards) >= self.window:
+            mean_r = float(np.mean(self.episode_rewards[-self.window:]))
+            if mean_r > self.best_mean:
+                self.best_mean = mean_r
+                self.model.save(os.path.join(self.save_dir, "best_model.zip"))
+                if self.verbose >= 1:
+                    print(
+                        f"[Checkpoint] Nuevo mejor modelo (paso {self.num_timesteps}): "
+                        f"recompensa media últimos {self.window} eps = {mean_r:.2f}"
+                    )
+        return True
+
+
 def create_base_pilot_for_training(
     pilot_type: str = "noisy",
     corner_name: str = "cone_1",
@@ -52,28 +93,43 @@ def create_base_pilot_for_training(
     """
     pilot_type = pilot_type.lower()
 
+    # Resolve optimal_model_path relative to cwd and project_root
+    resolved_path = optimal_model_path
+    if resolved_path is not None and not os.path.exists(resolved_path):
+        candidate = os.path.join(project_root, resolved_path)
+        if os.path.exists(candidate):
+            resolved_path = candidate
+
     if pilot_type == "heuristic":
         return HeuristicPilot(mode=heuristic_mode, corner_name=corner_name)
 
     elif pilot_type == "optimal":
-        if optimal_model_path is None:
-            # If no path is provided, use HeuristicPilot as a deterministic optimal approximation
+        if resolved_path is None or not os.path.exists(resolved_path):
+            # If no path is provided or doesn't exist, use HeuristicPilot
+            print(
+                f"[Copilot Training] Advertencia: Modelo óptimo no encontrado ({optimal_model_path}). Usando HeuristicPilot."
+            )
             return HeuristicPilot(mode="proportional", corner_name=corner_name)
-        return OptimalPilot(checkpoint_path=optimal_model_path)
+        print(f"[Copilot Training] Base pilot: OptimalPilot ({resolved_path})")
+        return OptimalPilot(checkpoint_path=resolved_path)
 
     elif pilot_type == "noisy":
         # Base reference pilot on top of which noise is applied
-        if optimal_model_path is not None and os.path.exists(optimal_model_path):
-            base_pilot = OptimalPilot(checkpoint_path=optimal_model_path)
+        if resolved_path is not None and os.path.exists(resolved_path):
+            print(f"[Copilot Training] Base pilot de NoisyPilot: OptimalPilot ({resolved_path})")
+            base_pilot = OptimalPilot(checkpoint_path=resolved_path)
         else:
+            print(f"[Copilot Training] Base pilot de NoisyPilot: HeuristicPilot ({heuristic_mode})")
             base_pilot = HeuristicPilot(mode=heuristic_mode, corner_name=corner_name)
         return NoisyPilot(optimal_pilot=base_pilot, sigma=noise_std, seed=seed)
 
     elif pilot_type == "laggy":
         # Base reference pilot on top of which latency is applied
-        if optimal_model_path is not None and os.path.exists(optimal_model_path):
-            base_pilot = OptimalPilot(checkpoint_path=optimal_model_path)
+        if resolved_path is not None and os.path.exists(resolved_path):
+            print(f"[Copilot Training] Base pilot de LaggyPilot: OptimalPilot ({resolved_path})")
+            base_pilot = OptimalPilot(checkpoint_path=resolved_path)
         else:
+            print(f"[Copilot Training] Base pilot de LaggyPilot: HeuristicPilot ({heuristic_mode})")
             base_pilot = HeuristicPilot(mode=heuristic_mode, corner_name=corner_name)
         return LaggyPilot(optimal_pilot=base_pilot, p_repeat=lag_prob, seed=seed)
 
@@ -155,8 +211,33 @@ def parse_args():
     parser.add_argument(
         "--lambda-intervention",
         type=float,
-        default=0.10,
-        help="Factor de penalización por intervención ||a_r||^2 (por defecto: 0.10).",
+        default=0.50,
+        help="Factor de penalización por intervención ||a_r||^2 (por defecto: 0.50).",
+    )
+    parser.add_argument(
+        "--action-smoothness-weight",
+        type=float,
+        default=0.05,
+        help="Factor de penalización por brusquedad/jerk ||a_r(t) - a_r(t-1)||^2 (por defecto: 0.05).",
+    )
+    parser.add_argument(
+        "--obstacle-safe-distance",
+        type=float,
+        default=0.35,
+        help="Distancia de seguridad a obstáculos en metros para zona muerta (por defecto: 0.35 m).",
+    )
+    parser.add_argument(
+        "--safe-altitude",
+        type=float,
+        default=0.30,
+        help="Altitud de seguridad en metros por debajo de la cual se activa penalización de suelo (por defecto: 0.30 m).",
+    )
+    parser.add_argument(
+        "--proximity-mode",
+        type=str,
+        default="quadratic",
+        choices=["quadratic", "exponential"],
+        help="Forma funcional de la penalización de proximidad: 'quadratic' (con zona muerta) o 'exponential' (por defecto: quadratic).",
     )
     parser.add_argument(
         "--residual-scale",
@@ -171,10 +252,40 @@ def parse_args():
         help="Tasa de aprendizaje (por defecto: 3e-4).",
     )
     parser.add_argument(
+        "--ent-coef",
+        type=str,
+        default="auto",
+        help="Coeficiente de entropía para SAC: 'auto' o valor float (e.g. '0.01') (por defecto: auto).",
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=None,
         help="Tamaño de lote (por defecto: 64 para PPO, 256 para SAC).",
+    )
+    parser.add_argument(
+        "--eval-freq",
+        type=int,
+        default=0,
+        help="Cada cuántos timesteps comprobar y guardar el mejor modelo (recompensa media móvil de entrenamiento); 0 desactiva.",
+    )
+    parser.add_argument(
+        "--eval-episodes",
+        type=int,
+        default=5,
+        help="Ventana de episodios para la recompensa media móvil del mejor modelo (por defecto: 5).",
+    )
+    parser.add_argument(
+        "--altitude-weight",
+        type=float,
+        default=1.0,
+        help="Peso de la penalización de proximidad al suelo en la recompensa de seguridad (por defecto: 1.0).",
+    )
+    parser.add_argument(
+        "--altitude-decay",
+        type=float,
+        default=0.10,
+        help="Decaimiento espacial en metros para la penalización de altitud (por defecto: 0.10).",
     )
     parser.add_argument(
         "--save-path",
@@ -230,8 +341,15 @@ def train():
     elif args.pilot_type == "laggy":
         print(f"   - Lag p_repeat:         {args.lag_prob}")
     print(f" Modo de recompensa:       {args.reward_mode}")
+    print(f" Forma de proximidad:      {args.proximity_mode} (d_safe: {args.obstacle_safe_distance}m, z_safe: {args.safe_altitude}m)")
     print(f" Lambda intervención:      {args.lambda_intervention}")
+    print(f" Peso jerk / suavidad:     {args.action_smoothness_weight}")
     print(f" Escala residual:          {args.residual_scale}")
+    print(f" Peso penalización suelo:  {args.altitude_weight}")
+    if args.algorithm.lower() == "sac":
+        print(f" SAC ent_coef:             {args.ent_coef}")
+    if args.eval_freq > 0:
+        print(f" Checkpoint mejor modelo:  cada {args.eval_freq} timesteps ({args.eval_episodes} eps)")
     print(f" Timesteps totales:        {args.timesteps:,}")
     print(f" Objetivo (esquina):       {args.corner}")
     print(f" Guardado de modelo en:    {args.save_path}")
@@ -259,6 +377,11 @@ def train():
         lambda_intervention=args.lambda_intervention,
         residual_scale=args.residual_scale,
         include_pilot_action_in_obs=True,  # Extended obs: [obs(11), a_h(4)] -> 15 dimensions
+        action_smoothness_weight=args.action_smoothness_weight,
+        obstacle_safe_distance_m=args.obstacle_safe_distance,
+        altitude_weight=args.altitude_weight,
+        safe_altitude_m=args.safe_altitude,
+        proximity_mode=args.proximity_mode,
         enable_trajectory_logging=False,
         verbose=0,
     )
@@ -293,6 +416,12 @@ def train():
         )
     elif algo_name == "sac":
         batch_size = args.batch_size if args.batch_size is not None else 256
+        sac_ent_coef = args.ent_coef
+        try:
+            sac_ent_coef = float(args.ent_coef)
+        except (ValueError, TypeError):
+            sac_ent_coef = "auto"
+
         model = SAC(
             policy="MlpPolicy",
             env=env,
@@ -301,7 +430,7 @@ def train():
             batch_size=batch_size,
             gamma=0.99,
             tau=0.005,
-            ent_coef="auto",
+            ent_coef=sac_ent_coef,
             verbose=args.verbose,
             tensorboard_log=args.tensorboard_log,
             seed=args.seed,
@@ -309,18 +438,41 @@ def train():
     else:
         raise ValueError(f"Algoritmo no soportado: {algo_name}")
 
-    # 4. Learning loop
+    # 4. Optional evaluation callback
+    # Webots permite una única instancia de Robot por proceso, por lo que no se puede crear
+    # un entorno de evaluación separado. Se guarda el mejor modelo según la recompensa media
+    # móvil de los episodios de entrenamiento (reutilizando el mismo entorno).
+    callbacks = []
+    if args.eval_freq > 0:
+        best_model_dir = os.path.join(save_dir, f"best_copilot_{algo_name}_{args.pilot_type}")
+        os.makedirs(best_model_dir, exist_ok=True)
+        callbacks.append(
+            BestTrainingRewardCallback(
+                check_freq=args.eval_freq,
+                window=args.eval_episodes,
+                save_dir=best_model_dir,
+                verbose=args.verbose,
+            )
+        )
+        print(f"[Checkpoint] Mejor modelo (recompensa media móvil) en {best_model_dir}/best_model.zip")
+
+    # 5. Learning loop
     print(f"Comenzando entrenamiento de {algo_name.upper()}...")
     try:
         model.learn(
             total_timesteps=args.timesteps,
             tb_log_name=run_name,
+            callback=callbacks if callbacks else None,
             progress_bar=True,
         )
     except KeyboardInterrupt:
         print("\nEntrenamiento interrumpido manualmente por el usuario.")
 
-    # 5. Save trained model
+    # 6. Save trained model
+    if args.save_path.endswith(".h"):
+        print(
+            f"[Aviso] Se guardará en formato ZIP de SB3 a pesar de la extensión .h ({args.save_path})."
+        )
     model.save(args.save_path)
     print(f"\n¡Entrenamiento finalizado! Modelo de copiloto guardado en: {args.save_path}")
 
