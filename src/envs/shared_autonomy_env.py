@@ -41,6 +41,13 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         residual_scale: float = 1.0,
         include_pilot_action_in_obs: bool = True,
         enable_trajectory_logging: bool = False,
+        action_smoothness_weight: float = 0.05,
+        obstacle_weight: float = 1.0,
+        obstacle_safe_distance_m: float = 0.35,
+        altitude_weight: float = 1.0,
+        safe_altitude_m: float = 0.30,
+        ground_threshold: float = 0.10,
+        proximity_mode: str = "quadratic",
         verbose: int = 1,
     ):
         """
@@ -57,6 +64,13 @@ class SharedAutonomyEnv(CornerEnvContinuous):
             include_pilot_action_in_obs: If True, the observation space for the copilot
                 is 15-dimensional ([drone_obs(11), pilot_action(4)]).
             enable_trajectory_logging: Save physical trajectory to disk.
+            action_smoothness_weight: Penalty weight for residual action variations ||a_r(t) - a_r(t-1)||^2.
+            obstacle_weight: Obstacle proximity penalty weight.
+            obstacle_safe_distance_m: Distance threshold below which obstacle penalty activates (default 0.35 m).
+            altitude_weight: Ground proximity penalty weight for copilot safety reward.
+            safe_altitude_m: Altitude threshold below which ground penalty activates (default 0.30 m).
+            ground_threshold: Altitude below which crash occurs (default 0.10 m).
+            proximity_mode: 'quadratic' (dead zone in safe flight) or 'exponential'.
             verbose: Console detail level.
         """
         self.pilot = pilot
@@ -65,11 +79,19 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         self.lambda_intervention = float(lambda_intervention)
         self.residual_scale = float(residual_scale)
         self.include_pilot_action_in_obs = bool(include_pilot_action_in_obs)
+        self.action_smoothness_weight = float(action_smoothness_weight)
+        self.obstacle_weight = float(obstacle_weight)
+        self.obstacle_safe_distance_m = float(obstacle_safe_distance_m)
+        self.altitude_weight = float(altitude_weight)
+        self.safe_altitude_m = float(safe_altitude_m)
+        self.ground_threshold = float(ground_threshold)
+        self.proximity_mode = str(proximity_mode).lower()
 
         # Internal traceability variables for the current step
         self.current_drone_obs = np.zeros(11, dtype=np.float32)
         self.current_pilot_action = np.zeros(4, dtype=np.float32)
         self.current_residual_action = np.zeros(4, dtype=np.float32)
+        self.prev_residual_action = np.zeros(4, dtype=np.float32)
         self.current_composed_action = np.zeros(4, dtype=np.float32)
         self.last_safety_reward = 0.0
         self.last_goal_reward = 0.0
@@ -126,6 +148,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         # Compute initial pilot action
         self.current_pilot_action = self._get_pilot_action(drone_obs)
         self.current_residual_action = np.zeros(4, dtype=np.float32)
+        self.prev_residual_action = np.zeros(4, dtype=np.float32)
         self.current_composed_action = np.clip(self.current_pilot_action, -1.0, 1.0)
         self.last_safety_reward = 0.0
         self.last_goal_reward = 0.0
@@ -179,10 +202,20 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         safety_reward = general_safety_reward(
             distance_to_obstacle_m=d_min,
             residual_action=a_r,
+            prev_residual_action=self.prev_residual_action,
             collided=collided,
             lambda_intervention=self.lambda_intervention,
+            action_smoothness_weight=self.action_smoothness_weight,
+            obstacle_weight=self.obstacle_weight,
+            obstacle_safe_distance_m=self.obstacle_safe_distance_m,
+            proximity_mode=self.proximity_mode,
+            altitude_m=self.alt,
+            ground_threshold=self.ground_threshold,
+            safe_altitude_m=self.safe_altitude_m,
+            altitude_weight=self.altitude_weight,
         )
         self.last_safety_reward = float(safety_reward)
+        self.prev_residual_action = a_r.copy()
 
         # Select reward signal according to configured mode
         if self.reward_mode == "safety":
@@ -211,4 +244,5 @@ class SharedAutonomyEnv(CornerEnvContinuous):
             "residual_norm": float(np.linalg.norm(self.current_residual_action)),
             "safety_reward": float(self.last_safety_reward),
             "goal_reward": float(self.last_goal_reward),
+            "altitude": float(self.alt),
         }
