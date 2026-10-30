@@ -98,10 +98,27 @@ def test_smoke_training_step_sac():
     env.close()
 
 
+def test_create_base_pilot_with_optimal_checkpoint_path():
+    """Validate that passing a relative path to an optimal model properly resolves and creates OptimalPilot."""
+    optimal_path = "models/ppo_optimal_pilot.zip"
+    if os.path.exists(os.path.join(project_root, optimal_path)):
+        pilot = create_base_pilot_for_training(
+            pilot_type="noisy",
+            optimal_model_path=optimal_path,
+            noise_std=0.30,
+        )
+        assert isinstance(pilot, NoisyPilot)
+        assert hasattr(pilot, "optimal_pilot")
+        from src.pilots.optimal_pilot import OptimalPilot
+
+        assert isinstance(pilot.optimal_pilot, OptimalPilot)
+
+
 if __name__ == "__main__":
     test_create_base_pilot_for_training_heuristic()
     test_create_base_pilot_for_training_noisy()
     test_create_base_pilot_for_training_laggy()
+    test_create_base_pilot_with_optimal_checkpoint_path()
     test_smoke_training_step_ppo()
     test_smoke_training_step_sac()
     print("Todos los tests de entrenamiento de copiloto residual pasaron exitosamente.")
