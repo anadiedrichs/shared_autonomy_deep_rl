@@ -4,7 +4,7 @@ This document outlines the development plan, current priorities, and future mile
 
 ## 🔴 Current focus: Stabilization & core fixes (next days)
 *The immediate priority is ensuring a stable baseline for the RLtools training loop and Webots simulation.*
-- [ ] **Critical:** Fix copilot  (Issue #33).
+- [ ] **Critical:** Fix copilot  ( Issue #34 #5 #8 ).
 - [ ] Train copilot in scenario 1.
 - [ ] Test the copilot with the noisy and lagged pilots.
 - [ ] Evaluate model performance against baseline heuristics.
