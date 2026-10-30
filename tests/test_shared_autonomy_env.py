@@ -149,6 +149,33 @@ def test_shared_autonomy_env_reward_modes():
             assert np.isclose(reward, safety_r + goal_r)
 
 
+def test_shared_autonomy_env_altitude_safety():
+    """Validate that altitude proximity is integrated and penalizes low altitude in step()."""
+    pilot = ConstantPilot(np.zeros(4, dtype=np.float32))
+    env = SharedAutonomyEnv(
+        pilot=pilot,
+        reward_mode="safety",
+        altitude_weight=2.0,
+        safe_altitude_m=0.30,
+        proximity_mode="quadratic",
+        verbose=0,
+    )
+    env.reset(seed=42)
+
+    # Force low altitude (e.g. 0.15 m -> near ground)
+    env.alt = 0.15
+    _, reward_low, _, _, info_low = env.step(np.zeros(4, dtype=np.float32))
+    assert "altitude" in info_low
+    assert np.isclose(info_low["altitude"], 0.15)
+
+    # Force safe altitude (e.g. 0.60 m)
+    env.alt = 0.60
+    _, reward_safe, _, _, info_safe = env.step(np.zeros(4, dtype=np.float32))
+
+    # Reward at low altitude must be significantly lower due to altitude penalty
+    assert reward_low < reward_safe
+
+
 if __name__ == "__main__":
     test_shared_autonomy_env_spaces()
     test_shared_autonomy_env_reset()
@@ -156,4 +183,5 @@ if __name__ == "__main__":
     test_shared_autonomy_env_step_with_copilot_instance()
     test_shared_autonomy_env_action_saturation()
     test_shared_autonomy_env_reward_modes()
+    test_shared_autonomy_env_altitude_safety()
     print("Todos los tests de SharedAutonomyEnv pasaron exitosamente.")
