@@ -30,6 +30,97 @@ except ImportError:  # pragma: no cover
 from src.pilots.base_pilot import BasePilot
 
 
+def plot_episode_trajectory(
+    trajectories: list[list[tuple[float, float, float] | list[float]]] | list[tuple[float, float, float] | list[float]],
+    output_path: str,
+    corner_name: str = "cone_1",
+    title: str = "Trayectorias de vuelo en Webots",
+):
+    """
+    Plots the 2D top-down (XY) physical trajectories in the 2x2m arena and saves as PNG.
+    Supports single or multiple superimposed trajectories without labeling individual episodes.
+
+    Args:
+        trajectories: Single episode [[x,y,z], ...] or list of episodes [[[x,y,z], ...], ...].
+        output_path: Target PNG file path.
+        corner_name: Target cone name ('cone_1', 'cone_2', etc.).
+        title: Plot title.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[Métricas] matplotlib no está instalado; omitiendo guardado de gráfico de trayectoria.")
+        return
+
+    if not trajectories:
+        return
+
+    # Normalize input to list of episodes
+    if isinstance(trajectories[0][0], (int, float)):
+        episodes_list = [trajectories]
+    else:
+        episodes_list = trajectories
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    # Room boundaries (-1 to 1)
+    ax.plot([-1, 1, 1, -1, -1], [-1, -1, 1, 1, -1], "k-", lw=2.5, label="Paredes (2x2m)")
+    ax.axhline(0, color="gray", linestyle=":", alpha=0.4)
+    ax.axvline(0, color="gray", linestyle=":", alpha=0.4)
+
+    # 4 cones positions
+    cones = {
+        "cone_1": (0.8, 0.8),
+        "cone_2": (-0.8, 0.8),
+        "cone_3": (-0.8, -0.8),
+        "cone_4": (0.8, -0.8),
+    }
+    for name, (cx, cy) in cones.items():
+        is_target = (name == corner_name)
+        color = "#e66101" if is_target else "#999999"
+        marker = "^" if is_target else "s"
+        size = 14 if is_target else 9
+        lbl = f"Objetivo ({name})" if is_target else None
+        ax.plot(cx, cy, marker=marker, markersize=size, color=color, markeredgecolor="black", label=lbl)
+
+    # Start position [0, 0]
+    ax.plot(0, 0, "o", markersize=10, color="#2b83ba", markeredgecolor="black", label="Inicio [0, 0]")
+
+    # Plot each trajectory superimposed
+    n_trajs = len(episodes_list)
+    line_alpha = max(0.25, 0.85 / (n_trajs ** 0.5)) if n_trajs > 1 else 0.85
+    traj_label_added = False
+
+    for traj_pts in episodes_list:
+        if not traj_pts:
+            continue
+        pts = np.asarray(traj_pts, dtype=np.float32)
+        xs = pts[:, 0]
+        ys = pts[:, 1]
+        lbl = "Trayectorias del dron" if not traj_label_added else None
+        ax.plot(xs, ys, color="#d7191c", lw=1.6, alpha=line_alpha, label=lbl)
+        ax.plot(xs[-1], ys[-1], "x", markersize=7, markeredgewidth=1.8, color="#d7191c", alpha=min(1.0, line_alpha + 0.2))
+        traj_label_added = True
+
+    ax.set_xlim(-1.15, 1.15)
+    ax.set_ylim(-1.15, 1.15)
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.set_title(title)
+    ax.set_aspect("equal")
+    ax.legend(loc="lower left", fontsize=8)
+    ax.grid(True, linestyle="--", alpha=0.3)
+
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[Trayectoria] Gráfico ({n_trajs} episodios superpuestos) guardado en: {output_path}")
+
+
 def evaluate_pilot(
     env,
     pilot: BasePilot,
@@ -37,6 +128,8 @@ def evaluate_pilot(
     seed: int | None = None,
     verbose: int = 1,
     save_csv_path: str | None = None,
+    log_trajectory: bool = False,
+    plot_trajectory_png: str | None = None,
 ) -> dict:
     """
     Executes 'n_episodes' deterministically evaluating a pilot on an environment.
@@ -67,6 +160,8 @@ def evaluate_pilot(
         print(f" Piloto: {pilot.__class__.__name__}")
         print(f"{'='*65}")
 
+    all_episode_trajectories: list[list[list[float]]] = []
+
     for ep in range(1, n_episodes + 1):
         ep_seed = int(rng.integers(0, 1_000_000)) if seed is not None else None
         obs, info = env.reset(seed=ep_seed)
@@ -78,6 +173,14 @@ def evaluate_pilot(
         terminated = False
         truncated = False
         term_reason = "unknown"
+        ep_trajectory: list[list[float]] = []
+
+        # Record initial position if tracking trajectory
+        if log_trajectory or plot_trajectory_png is not None:
+            x0 = float(getattr(env, "x_global", 0.0))
+            y0 = float(getattr(env, "y_global", 0.0))
+            z0 = float(getattr(env, "z_global", getattr(env, "alt", 0.0)))
+            ep_trajectory.append([x0, y0, z0])
 
         while not (terminated or truncated):
             # Deterministic inference according to common BasePilot contract
@@ -90,8 +193,17 @@ def evaluate_pilot(
             ep_reward += float(reward)
             ep_steps += 1
 
+            if log_trajectory or plot_trajectory_png is not None:
+                xt = float(getattr(env, "x_global", 0.0))
+                yt = float(getattr(env, "y_global", 0.0))
+                zt = float(getattr(env, "z_global", getattr(env, "alt", 0.0)))
+                ep_trajectory.append([xt, yt, zt])
+
             if verbose >= 2:
                 print(f"  [Ep {ep} | Paso {ep_steps}] Acc: {action.round(3)} | Rew: {reward:.3f}")
+
+        if ep_trajectory:
+            all_episode_trajectories.append(ep_trajectory)
 
         # Analyze episode termination causes
         is_success = bool(info.get("is_success", False))
@@ -195,6 +307,20 @@ def evaluate_pilot(
 
         if verbose >= 1:
             print(f"[Métricas] Resultados guardados en: {save_csv_path}")
+
+    # Generate trajectory plot if requested
+    if plot_trajectory_png is not None and all_episode_trajectories:
+        corner = getattr(env, "corner_name", "cone_1")
+        pilot_title = f"Trayectorias: {pilot.__class__.__name__} ({corner})"
+        plot_episode_trajectory(
+            trajectories=all_episode_trajectories,
+            output_path=plot_trajectory_png,
+            corner_name=corner,
+            title=pilot_title,
+        )
+
+    if log_trajectory:
+        metrics_summary["trajectories"] = all_episode_trajectories
 
     return metrics_summary
 
@@ -373,6 +499,18 @@ def parse_args():
         help="Ruta destino para guardar resultados CSV detallados.",
     )
     parser.add_argument(
+        "--log-trajectory",
+        action="store_true",
+        default=False,
+        help="Si se activa, registra las coordenadas de trayectoria [x, y, z] de los episodios.",
+    )
+    parser.add_argument(
+        "--plot-trajectory-png",
+        type=str,
+        default=None,
+        help="Ruta donde guardar la imagen PNG con el gráfico de la trayectoria 2D en el recinto (ej. logs/trayectoria.png).",
+    )
+    parser.add_argument(
         "--verbose",
         type=int,
         default=1,
@@ -386,10 +524,13 @@ if __name__ == "__main__":
 
     from src.envs.corner_env_continuous import CornerEnvContinuous
 
+    enable_traj = bool(args.log_trajectory or (args.plot_trajectory_png is not None))
+
     print(f"[Evaluación] Inicializando entorno CornerEnvContinuous (objetivo: {args.corner})...")
     env = CornerEnvContinuous(
         corner_name=args.corner,
         max_episode_steps=args.max_episode_steps,
+        enable_trajectory_logging=enable_traj,
         verbose=0,
     )
 
@@ -418,6 +559,8 @@ if __name__ == "__main__":
             seed=args.seed,
             verbose=args.verbose,
             save_csv_path=args.save_csv,
+            log_trajectory=args.log_trajectory,
+            plot_trajectory_png=args.plot_trajectory_png,
         )
     finally:
         env.close()

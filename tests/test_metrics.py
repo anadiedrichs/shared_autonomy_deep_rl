@@ -106,7 +106,30 @@ def test_evaluate_pilot_mock_environment():
             assert len(lines) == 6  # 1 header row + 5 episodes
 
 
+def test_evaluate_pilot_trajectory_plotting():
+    """Validate that evaluate_pilot can record trajectory points and generate a PNG plot."""
+    env = CornerEnvContinuous(max_episode_steps=5, verbose=0)
+    pilot = MockPilot()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        plot_file = os.path.join(tmpdir, "test_trajectory.png")
+        results = evaluate_pilot(
+            env=env,
+            pilot=pilot,
+            n_episodes=2,
+            seed=42,
+            verbose=0,
+            log_trajectory=True,
+            plot_trajectory_png=plot_file,
+        )
+        assert "trajectories" in results
+        assert len(results["trajectories"]) == 2
+        assert len(results["trajectories"][0]) > 0
+        assert os.path.exists(plot_file), "La imagen PNG de trayectoria no fue generada"
+
+
 if __name__ == "__main__":
     test_create_pilot_instance()
     test_evaluate_pilot_mock_environment()
+    test_evaluate_pilot_trajectory_plotting()
     print("Todos los tests de métricas pasaron exitosamente.")
