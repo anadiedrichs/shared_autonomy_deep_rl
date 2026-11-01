@@ -15,8 +15,7 @@ quadrotors via deep reinforcement learning"*, CEIA-FIUBA, 2025,
 framework of the research project *"Shared Autonomy for UAVs: Sim-to-Real Development with
 Webots and RLtools"* (Universidad Europea).
 
-> Status: **initial skeleton**. The modules in `src/` contain the interface and design
-> docstrings, pending implementation. See `docs/architecture.md` for details on the
+>  See `docs/architecture.md` for details on the
 > architectural decisions made prior to porting the code.
 
 ## Architectural Decisions (Summary)
