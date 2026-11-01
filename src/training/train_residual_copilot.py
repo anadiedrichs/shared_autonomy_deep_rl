@@ -178,6 +178,8 @@ def parse_args():
     )
     parser.add_argument(
         "--lag-prob",
+        "--p-repeat",
+        dest="lag_prob",
         type=float,
         default=0.30,
         help="Probabilidad de repetición p_repeat para LaggyPilot (por defecto: 0.30).",
