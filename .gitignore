@@ -224,12 +224,17 @@ venv/
 .venv/
 *.egg-info/
 
-# Entrenamiento / resultados
-runs/
-logs/
+# Entrenamiento / resultados locales
+/runs/
+/logs/
 *.zip
 *.h  # checkpoints exportados por RLtools (regenerables)
-tensorboard_logs/
+/tensorboard_logs/
+
+# Incluir explícitamente artefactos y resultados consolidados del TFM
+!results_TFM/
+!results_TFM/**
+
 
 # Webots
 *.wbproj
