@@ -43,7 +43,7 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         enable_trajectory_logging: bool = False,
         action_smoothness_weight: float = 0.05,
         obstacle_weight: float = 1.0,
-        obstacle_safe_distance_m: float = 0.35,
+        obstacle_safe_distance_m: float = 0.15,
         altitude_weight: float = 1.0,
         safe_altitude_m: float = 0.30,
         ground_threshold: float = 0.10,
@@ -139,11 +139,17 @@ class SharedAutonomyEnv(CornerEnvContinuous):
         drone_obs, info = super().reset(seed=seed, options=options)
         self.current_drone_obs = drone_obs
 
-        # Reset internal pilot states if they implement memory
+        # Reset internal pilot states if they implement memory / seeding
         if hasattr(self.pilot, "reset"):
-            self.pilot.reset()
+            try:
+                self.pilot.reset(seed=seed)
+            except TypeError:
+                self.pilot.reset()
         if self.copilot is not None and hasattr(self.copilot, "reset"):
-            self.copilot.reset()
+            try:
+                self.copilot.reset(seed=seed)
+            except TypeError:
+                self.copilot.reset()
 
         # Compute initial pilot action
         self.current_pilot_action = self._get_pilot_action(drone_obs)

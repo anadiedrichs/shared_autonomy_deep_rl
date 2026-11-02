@@ -24,6 +24,7 @@ from src.pilots.heuristic_pilot import HeuristicPilot
 from src.pilots.laggy_pilot import LaggyPilot
 from src.pilots.noisy_pilot import NoisyPilot
 from src.pilots.optimal_pilot import OptimalPilot
+from src.pilots.standby_pilot import StandByPilot
 
 
 try:
@@ -124,7 +125,7 @@ def create_base_pilot_for_training(
         return NoisyPilot(optimal_pilot=base_pilot, sigma=noise_std, seed=seed)
 
     elif pilot_type == "laggy":
-        # Base reference pilot on top of which latency is applied
+        # Base reference pilot on top of which latency is applied (Schaff & Walter, 2020)
         if resolved_path is not None and os.path.exists(resolved_path):
             print(f"[Copilot Training] Base pilot de LaggyPilot: OptimalPilot ({resolved_path})")
             base_pilot = OptimalPilot(checkpoint_path=resolved_path)
@@ -133,10 +134,20 @@ def create_base_pilot_for_training(
             base_pilot = HeuristicPilot(mode=heuristic_mode, corner_name=corner_name)
         return LaggyPilot(optimal_pilot=base_pilot, p_repeat=lag_prob, seed=seed)
 
+    elif pilot_type == "standby":
+        # Base reference pilot with packet drops and hover failsafe mode (zeros)
+        if resolved_path is not None and os.path.exists(resolved_path):
+            print(f"[Copilot Training] Base pilot de StandByPilot: OptimalPilot ({resolved_path})")
+            base_pilot = OptimalPilot(checkpoint_path=resolved_path)
+        else:
+            print(f"[Copilot Training] Base pilot de StandByPilot: HeuristicPilot ({heuristic_mode})")
+            base_pilot = HeuristicPilot(mode=heuristic_mode, corner_name=corner_name)
+        return StandByPilot(optimal_pilot=base_pilot, p_drop=lag_prob, seed=seed)
+
     else:
         raise ValueError(
             f"Tipo de piloto desconocido: '{pilot_type}'. "
-            "Opciones válidas: 'noisy', 'laggy', 'heuristic', 'optimal'."
+            "Opciones válidas: 'noisy', 'laggy', 'standby', 'heuristic', 'optimal'."
         )
 
 
@@ -167,7 +178,7 @@ def parse_args():
         "--pilot-type",
         type=str,
         default="noisy",
-        choices=["noisy", "laggy", "heuristic", "optimal"],
+        choices=["noisy", "laggy", "standby", "heuristic", "optimal"],
         help="Tipo de piloto humano/sintético congelado (por defecto: noisy).",
     )
     parser.add_argument(
@@ -225,8 +236,8 @@ def parse_args():
     parser.add_argument(
         "--obstacle-safe-distance",
         type=float,
-        default=0.35,
-        help="Distancia de seguridad a obstáculos en metros para zona muerta (por defecto: 0.35 m).",
+        default=0.15,
+        help="Distancia de seguridad a obstáculos en metros para zona muerta (por defecto: 0.15 m).",
     )
     parser.add_argument(
         "--safe-altitude",
