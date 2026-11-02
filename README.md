@@ -17,7 +17,6 @@ Webots and RLtools"* (Universidad Europea).
 
 > **Project Status**: **Master's Thesis Complete Framework**. Fully implemented continuous navigation policies (RLtools TD3/SAC and SB3 PPO), synthetic degraded human pilot models (NoisyPilot, LaggyPilot, StandByPilot), and the Constrained Residual Copilot with adaptive Lagrange multipliers (Schaff & Walter, 2020). Experimental models, evaluations, and figures are organized under `results_TFM/`.
 
----
 
 ## 🔬 Quick Reproducibility (For Evaluators)
 
@@ -34,7 +33,6 @@ Or run the interactive notebook:
 For the complete 3-tier reproducibility protocol (including Webots simulation evaluation and re-training from scratch), consult the master document:
 👉 [**REPRODUCIBILITY.md**](REPRODUCIBILITY.md) (or [Guía en Español](REPRODUCIBILIDAD.md)).
 
----
 
 ## Architectural Decisions (Summary)
 
