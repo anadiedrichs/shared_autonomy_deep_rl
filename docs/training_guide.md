@@ -75,28 +75,57 @@ python src/training/train_rltools_td3.py \
 * **Política determinista:** Salida acotada en `[-1, 1]` mediante activación Tanh en la capa final del actor.
 * **Exportación a C:** Genera `models/optimal_pilot_td3_checkpoint.h` (y su versión `_best.h`), compatible con la especificación de tensores y capas de RLtools para TinyRL.
 
-### Opción D: Entrenamiento del Copiloto Residual (Autonomía Compartida)
+### Opción D: Entrenamiento del Copiloto Residual Constreñido con PPO (Schaff & Walter, 2020)
 
-Entrena la política residual $\pi_r(s, a_h)$ manteniendo congelado a un piloto humano o sintético degradado (`noisy` o `laggy`), optimizando la recompensa de seguridad *goal-agnostic* (Schaff & Walter, 2020):
+Entrena la política residual $\mathbf{a}_r = \pi_r(s_t, \mathbf{a}_h)$ mediante **Constrained PPO** con multiplicador de Lagrange adaptable sobre un operador humano sintético degradado (como el operador ruidoso con $\sigma = 0.50$, idéntico a la configuración del trabajo de Schaff & Walter):
+
+```bash
+docker exec -it webots_rltools_env bash
+python src/training/train_copilot.py \
+  --timesteps 100000 \
+  --warmup-steps 10000 \
+  --pilot-type noisy \
+  --noise-std 0.50 \
+  --optimal-backend rltools_td3 \
+  --optimal-checkpoint results_TFM/models/optimal_pilot_td3_checkpoint.h \
+  --residual-scale 1.0 \
+  --init-lambda 1.0 \
+  --lr-lambda 0.0003 \
+  --target-threshold 0.0 \
+  --corner cone_1 \
+  --seed 42 \
+  --save-path results_TFM/models/copilot_constrained_ppo_noisy.zip \
+  --tensorboard-log results_TFM/logs/copilot_constrained_ppo
+```
+
+O utilizando el script automatizado con valores por defecto preparados:
+
+```bash
+bash scripts/train_copilot.sh
+```
+
+* **Aspectos metodológicos clave (Schaff & Walter, 2020):**
+  - **Piloto Subrogado Ruidoso (`--pilot-type noisy --noise-std 0.50`):** Simula el temblor o degradación motriz del operador humano inyectando perturbaciones gaussianas $\mathcal{N}(0, 0.50^2)$ sobre el espacio de acción normalizado $[-1, 1]$.
+  - **Fase de Calentamiento (*Warm-up*, `--warmup-steps 10000`):** Durante los primeros $10\,000$ pasos de entrenamiento, la acción residual se anula forzadamente ($\mathbf{a}_r = 0, \beta = 0$). Esto permite que la red del Crítico aprenda la función de valor $V(s, \mathbf{a}_h)$ sobre las trayectorias no asistidas del operador antes de que el Actor residual comience a emitir correcciones.
+  - **Multiplicador de Lagrange Adaptable (`--init-lambda 1.0 --lr-lambda 0.0003`):** Modula dinámicamente la penalización por intervención según el estado de riesgo. Si el cuadricóptero se acerca a muros o piso, $\lambda$ se ajusta para salvaguardar la integridad del vehículo; cuando la maniobra del piloto es segura, el término dual fuerza a que la norma residual tienda a cero ($\|\mathbf{a}_r\|_2 \to 0$, principio de mínima intervención).
+  - **Checkpoint base óptimo (`--optimal-checkpoint` y `--optimal-backend`):** Permite utilizar como política base TD3 (`rltools_td3`), SAC (`rltools_sac`) o PPO (`sb3_ppo`).
+
+### Opción E: Entrenamiento del Copiloto Residual No Constreñido (Línea base unconstrained)
+
+Para fines comparativos y de ablación, se puede entrenar un copiloto residual estándar mediante PPO/SAC convencional penalizando la norma de intervención de manera estática con factor fijo $\lambda$:
 
 ```bash
 docker exec -it webots_rltools_env bash
 python src/training/train_residual_copilot.py \
   --algorithm ppo \
   --pilot-type noisy \
-  --noise-std 0.20 \
+  --noise-std 0.50 \
   --timesteps 100000 \
   --lambda-intervention 0.10 \
   --residual-scale 1.0 \
   --save-path models/copilot_residual_ppo_noisy.zip \
-  --tensorboard-log logs/copilot
+  --tensorboard-log results_TFM/logs/copilot_unconstrained
 ```
-
-* **Parámetros clave:**
-  - `--algorithm`: Algoritmo de RL (`ppo` o `sac`).
-  - `--pilot-type`: Piloto congelado a asistir (`noisy`, `laggy`, `heuristic`, `optimal`).
-  - `--lambda-intervention`: Penalización por magnitud $\|a_r\|^2$ (por defecto `0.10`); cuanto mayor es, más se restringe la intervención del copiloto.
-  - `--residual-scale`: Factor de atenuación para limitar la autoridad del copiloto sobre los mandos del piloto (en $(0, 1]$).
 
 ---
 

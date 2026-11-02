@@ -258,33 +258,96 @@ Al finalizar la corrida, se imprime un resumen estadístico detallado:
 =================================================================
  RESUMEN DE EVALUACIÓN (Patrón Tesis 2025):
   Episodios Evaluados            : 100
-  Semilla Maestra de Evaluación  : 1000
-  Tasa de Éxito   (Success Rate) : 96.0% (96/100)
-  Tasa de Caídas  (Crash Rate)   : 4.0% (4/100)
+  Semilla Maestra de Evaluación  : 42
+  Tasa de Éxito   (Success Rate) : 100.0% (100/100)
+  Tasa de Caídas  (Fall Rate)    : 0.0% (0/100)
+  Tasa de Límites (OOB Rate)     : 0.0% (0/100)
   Tasa de Tiempo  (Timeout Rate) : 0.0% (0/100)
-  Recompensa Media               : 75.42 ± 6.18
-  Longitud Media (pasos)         : 47.1 ± 3.8
-  Distancia Final Media          : 0.118m ± 0.012m
-  Altitud Final Media            : 498.2mm ± 5.4mm
+  Recompensa Media               : 95.95 ± 0.00
+  Longitud Media (pasos)         : 349.0 ± 0.0 (11.17s)
+  Distancia Final Media (meta)   : 0.142m ± 0.000m
+  Distancia Mín. a Obstáculo     : 0.198m ± 0.000m
+  Altitud Final Media            : 0.850m ± 0.000m
 =================================================================
 ```
 
-### En el archivo CSV (`logs/...csv`)
+### En el archivo CSV (`results_TFM/logs/...csv`)
 
 El archivo CSV generado contiene las siguientes columnas trazables por episodio:
 
 * `episode`: Número secuencial del episodio ($1$ a $N$).
 * `seed`: Semilla pseudoaleatoria única asignada a ese episodio.
 * `reward`: Recompensa acumulada obtenida en el episodio.
-* `length`: Cantidad de pasos ejecutados antes de terminar.
+* `length`: Cantidad de pasos ejecutados antes de terminar ($32\,\text{ms}$ por paso).
 * `success`: Booleano (`True`/`False`), indica si alcanzó el cono con altitud segura $> 0.20\,\text{m}$.
 * `termination`: Motivo de finalización (`goal`, `fall`, `out_of_bounds`, `timeout`).
-* `final_distance`: Distancia euclidiana mínima en metros al centro del cono en el último paso.
-* `final_altitude_mm`: Altitud final del dron en milímetros.
+* `final_distance`: Distancia euclidiana horizontal en metros al centro del cono en el último paso.
+* `min_obstacle_distance`: Distancia mínima en metros a los obstáculos o muros perimetrales (mínimo de los 4 sensores láser ToF: frontal, trasero, derecho, izquierdo).
+* `final_altitude_m`: Altitud final del dron en metros respecto al suelo.
 
 ---
 
-## 7. Comparación Global y Generación de Reportes (`compare_pilots.py`)
+## 7. Scripts de Evaluación Multisemilla Automatizada
+
+### Evaluación de Pilotos Óptimos Pre-entrenados (`scripts/evaluate_optimal_pilots.sh`)
+
+Evalúa los modelos guardados en `results_TFM/models/` para TD3, SAC y PPO a lo largo de las 5 semillas maestras **sin necesidad de volver a entrenar**:
+
+```bash
+# Evaluar todos los algoritmos (TD3, SAC y PPO)
+bash scripts/evaluate_optimal_pilots.sh
+
+# Evaluar solo un algoritmo específico
+bash scripts/evaluate_optimal_pilots.sh td3
+bash scripts/evaluate_optimal_pilots.sh sac
+bash scripts/evaluate_optimal_pilots.sh ppo
+
+# Configurar episodios o semillas por variables de entorno
+EPISODES=20 SEEDS="42 123" bash scripts/evaluate_optimal_pilots.sh td3
+```
+
+### Evaluación de Pilotos Degradados y Heurístico (`scripts/evaluate_degraded_pilots.sh`)
+
+```bash
+bash scripts/evaluate_degraded_pilots.sh
+```
+
+### Evaluación Comparativa del Copiloto Constreñido (`scripts/evaluate_copilot.sh` y `evaluate_copilot.py`)
+
+Evalúa el desempeño de la autonomía compartida contrastando la condición **Placebo (piloto degradado no asistido)** frente a la condición **Asistido (con copiloto Constrained PPO)** a lo largo de las 5 semillas maestras y 4 perfiles de degradación (Noisy $\sigma=0.5, 1.0$, Laggy $p=0.8$ y Standby $p=0.8$):
+
+```bash
+# Ejecutar la campaña completa multisemilla:
+bash scripts/evaluate_copilot.sh
+
+# Personalizar parámetros o modelo del copiloto:
+COPILOT_CHECKPOINT="results_TFM/models/copilot_constrained_ppo_noisy.zip" \
+EPISODES=20 \
+bash scripts/evaluate_copilot.sh
+```
+
+O evaluar directamente una corrida puntual con `src/evaluation/evaluate_copilot.py`:
+
+```bash
+python src/evaluation/evaluate_copilot.py \
+  --copilot-checkpoint results_TFM/models/copilot_constrained_ppo_noisy.zip \
+  --optimal-checkpoint results_TFM/models/optimal_pilot_td3_checkpoint.h \
+  --optimal-backend rltools_td3 \
+  --episodes 20 \
+  --seeds 42 123 256 512 789 \
+  --output-dir results_TFM/logs/copilot_eval
+```
+
+* **Métricas computadas y contrastadas:**
+  - **Tasa de éxito (%)** y **Tasa de colisión / caídas (%)**.
+  - **Supervivencia / Integridad estructural (%)**: $100\% - \text{Colisión \%}$.
+  - **Distancia a meta (m)**, **Distancia mín. a obstáculos ToF (m)** y **Altitud final (m)**.
+  - **Norma media de intervención ($\overline{\|\mathbf{a}_r\|_2}$)**: Magnitud del esfuerzo correctivo residual del copiloto (principio de mínima intrusión).
+  - **Suavidad de acción / Jerk ($\overline{\|\Delta \mathbf{a}_r\|_2}$)**: Tasa de variación temporal de las correcciones para verificar la ausencia de oscilaciones parásitas (*chattering*).
+
+---
+
+## 8. Comparación Global y Generación de Reportes (`compare_pilots.py` y `reproduce_results.py`)
 
 Para agregar y comparar sistemáticamente los resultados de múltiples pilotos con sus intervalos de error estándar ($SEM$):
 

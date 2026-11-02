@@ -1,4 +1,4 @@
-# Guía de Reproducibilidad de Resultados
+# Guía de reproducibilidad de resultados
 
 Por favor consulta la guía completa y detallada en [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
 

@@ -1,13 +1,13 @@
-# Guía de Reproducibilidad de Resultados / Reproducibility Guide
+# Guía de reproducibilidad de resultados / Reproducibility guide
 
-**Trabajo de Fin de Máster (TFM):** *Autonomía Compartida para UAVs: Desarrollo Sim-to-Real con Webots y RLtools*  
+**Trabajo de fin de máster (TFM):** *Autonomía Compartida para UAVs: Desarrollo Sim-to-Real con Webots y RLtools*  
 **Autora:** Ana Laura Diedrichs  
 **Institución:** Universidad Europea de Madrid  
 **Repositorio:** `shared_autonomy_deep_rl`
 
 ---
 
-## 🎯 Objetivo de esta Guía
+## Objetivo de esta guía
 
 Este documento proporciona las instrucciones completas, transparentes y sistemáticas para **reproducir de manera exacta todas las tablas numéricas, métricas cuantitativas y figuras comparativas** presentadas en la memoria del TFM (Capítulo 4: *Desarrollo y Resultados* y Capítulo 5: *Discusión*).
 
@@ -33,27 +33,27 @@ Para adaptarse a la disponibilidad de tiempo y recursos computacionales del trib
 
 ---
 
-## 🗺️ Matriz de Trazabilidad: Memoria $\leftrightarrow$ Código y Datos
+## Matriz de trazabilidad: memoria $\leftrightarrow$ código y datos
 
 A continuación se detalla la correspondencia exacta entre cada artefacto publicado en la memoria escrita y los scripts y datos que lo sustentan:
 
-| Elemento en Memoria | Descripción | Script de Reproducción | Fuente de Datos (`results_TFM/`) |
+| Elemento en memoria | Descripción | Script de reproducción | Fuente de datos (`results_TFM/`) |
 | :--- | :--- | :--- | :--- |
 | **Tabla 4.1** | Configuraciones de evaluación de pilotos degradados | `scripts/reproduce_results.py --table 4.1` | Parámetros canónicos del marco teórico |
 | **Tabla 4.2** | Comparativa cuantitativa: Pilotos Óptimos PPO vs. SAC vs. TD3 | `scripts/reproduce_results.py --table 4.2` | `results_TFM/logs/td3/eval_optimal_*.csv`, `results_TFM/logs/sac/` |
 | **Tabla 4.3** | Desempeño de pilotos sintéticos degradados (Noisy, Laggy, StandBy) | `scripts/reproduce_results.py --table 4.3` | `results_TFM/logs/degraded/` |
 | **Tabla 4.4** | Desempeño del copiloto residual asistiendo a piloto ruidoso ($\sigma=0.30$) | `scripts/reproduce_results.py --table 4.4` | `results_TFM/logs/copilot/` |
 | **Tabla 4.5** | Desempeño del copiloto residual asistiendo a piloto lento ($p_{\text{drop}}$) | `scripts/reproduce_results.py --table 4.5` | `results_TFM/logs/copilot/` |
-| **Figuras de Trayectorias** | Recorrido espacial $XY$ en recinto de $2\times 2\,\text{m}$ | `scripts/reproduce_results.py --plots` | `results_TFM/logs/*/*.png` |
+| **Figuras de trayectorias** | Recorrido espacial $XY$ en recinto de $2\times 2\,\text{m}$ | `scripts/reproduce_results.py --plots` | `results_TFM/logs/*/*.png` |
 | **Anexos 1 a 5** | Hiperparámetros de entrenamiento (TD3, SAC, PPO, Copiloto) | Inspección en código | `src/training/`, `models/*_hyperparameters.json` |
 
 ---
 
-## ⚡ Nivel 1: Reproducción Offline Inmediata (< 1 min)
+## Nivel 1: reproducción offline inmediata (< 1 min)
 
 Este nivel permite al evaluador validar todas las afirmaciones numéricas del texto sin necesidad de compilar código C++, configurar Webots ni disponer de GPU.
 
-### Opción A: Script Automatizado por Consola
+### Opción A: script automatizado por consola
 Ejecutar desde el directorio raíz del repositorio:
 ```bash
 python3 scripts/reproduce_results.py
@@ -69,7 +69,7 @@ python3 scripts/reproduce_results.py
 
 *Nota:* El script genera sus resultados en `./reproduced_results/` para preservar intacto el directorio `results_TFM/`.
 
-### Opción B: Cuaderno Interactivo Jupyter
+### Opción B: cuaderno interactivo Jupyter
 Para una inspección interactiva paso a paso con gráficos enriquecidos:
 ```bash
 jupyter notebook notebooks/reproduce_thesis_results.ipynb
@@ -78,22 +78,22 @@ jupyter notebook notebooks/reproduce_thesis_results.ipynb
 
 ---
 
-## 🚁 Nivel 2: Inferencia en el Simulador Webots (~ 5 - 15 min)
+## Nivel 2: inferencia en el simulador Webots (~ 5 - 15 min)
 
 Valida físicamente el comportamiento de los modelos pre-entrenados dentro del simulador Webots con el cuadricóptero Crazyflie.
 
-### Requisitos Previos
+### Requisitos previos
 * Docker y Docker Compose instalados (ver [`docs/docker_guide.md`](docs/docker_guide.md)).
 * Modelos pre-entrenados disponibles en `results_TFM/models/`.
 
-### 1. Iniciar el Entorno
+### 1. Iniciar el entorno
 ```bash
 # Iniciar contenedor Docker con soporte de Webots
 docker compose up -d
 docker compose exec webots_rl bash
 ```
 
-### 2. Evaluar Pilotos Óptimos (TD3, SAC, PPO)
+### 2. Evaluar pilotos óptimos (TD3, SAC, PPO)
 ```bash
 # Evaluación de 20 episodios del piloto óptimo determinista:
 python3 src/evaluation/metrics.py \
@@ -104,7 +104,7 @@ python3 src/evaluation/metrics.py \
     --plot-trajectory-png ./reproduced_results/trayectoria_td3.png
 ```
 
-### 3. Evaluar Pilotos Degradados Multisemilla (5 semillas: 42, 123, 256, 512, 789)
+### 3. Evaluar pilotos degradados multisemilla (5 semillas: 42, 123, 256, 512, 789)
 ```bash
 bash scripts/evaluate_degraded_pilots.sh
 ```
@@ -113,7 +113,7 @@ Este script recorre automáticamente:
 * `LaggyPilot` ($p_{\text{repeat}} = 0.8$, latencia humana Schaff & Walter)
 * `StandByPilot` ($p_{\text{drop}} = 0.8$, pérdida de paquetes con hover failsafe)
 
-### 4. Evaluar el Copiloto Residual Constreñido (Placebo vs. Asistido)
+### 4. Evaluar el copiloto residual constreñido (placebo vs. asistido)
 ```bash
 bash scripts/evaluate_copilot.sh
 ```
@@ -124,11 +124,11 @@ Calcula cuantitativamente:
 
 ---
 
-## 🧠 Nivel 3: Re-entrenamiento Multisemilla desde Cero
+## Nivel 3: re-entrenamiento multisemilla desde cero
 
 Para reproducir el entrenamiento completo de las políticas de navegación y asistencia:
 
-### 1. Piloto Óptimo TD3 (RLtools C++)
+### 1. Piloto óptimo TD3 (RLtools C++)
 ```bash
 python3 src/training/train_rltools_td3.py \
     --timesteps 150000 \
@@ -137,7 +137,7 @@ python3 src/training/train_rltools_td3.py \
     --gamma 0.99
 ```
 
-### 2. Piloto Óptimo SAC (RLtools C++)
+### 2. Piloto óptimo SAC (RLtools C++)
 ```bash
 python3 src/training/train_rltools_sac.py \
     --timesteps 100000 \
@@ -145,7 +145,7 @@ python3 src/training/train_rltools_sac.py \
     --target-entropy -4.0
 ```
 
-### 3. Piloto Óptimo PPO (Stable-Baselines3)
+### 3. Piloto óptimo PPO (Stable-Baselines3)
 ```bash
 python3 src/training/train_sb3_ppo.py \
     --timesteps 150000 \
@@ -154,7 +154,7 @@ python3 src/training/train_sb3_ppo.py \
     --gamma 0.97
 ```
 
-### 4. Copiloto Residual Constreñido (PPO con Multiplicador de Lagrange)
+### 4. Copiloto residual constreñido (PPO con multiplicador de Lagrange)
 ```bash
 python3 src/training/train_copilot.py \
     --total-timesteps 100000 \
@@ -167,7 +167,7 @@ python3 src/training/train_copilot.py \
 
 ---
 
-## 📂 Organización de Datos en `results_TFM/`
+## Organización de datos en `results_TFM/`
 
 El directorio `results_TFM/` contiene los artefactos experimentales que respaldan la memoria:
 
@@ -189,7 +189,7 @@ results_TFM/
 
 ---
 
-## ❓ Preguntas Frecuentes y Comportamiento Esperado
+## Preguntas frecuentes y comportamiento esperado
 
 ### ¿Por qué en la evaluación del piloto óptimo la desviación estándar es $0.0$?
 La política de inferencia del actor óptimo (TD3, SAC o PPO) es **100% determinista** (se desactiva el ruido de exploración $\sigma_{\text{expl}} = 0$). Dado que el entorno simulado en Webots parte de una posición fija inicial $(0, 0, z_0)$ y la cinemática es determinista, los $100$ episodios siguen la misma trayectoria óptima. Esto es matemáticamente esperado y constituye la prueba de reproducibilidad determinista de la cota superior del sistema. En contraste, los pilotos degradados (ruidosos y lentos) y el sistema asistido incorporan estocasticidad y exhiben varianza controlada dependiente de la semilla.
@@ -205,9 +205,9 @@ pdflatex main.tex
 
 ---
 
-## 📜 Licencia y Contacto
+## Licencia y contacto
 
 Este proyecto está bajo licencia **Apache 2.0**.  
 Para dudas o consultas respecto a la reproducción de estos experimentos:
 * **Autora:** Ana Laura Diedrichs (`ana.diedrichs@docentes.frm.utn.edu.ar`)
-* **Repositorio de Referencia Original (Tesis CEIA-FIUBA 2025):** [Zenodo DOI: 10.5281/zenodo.16914761](https://doi.org/10.5281/zenodo.16914761)
+* **Repositorio de referencia original (tesis CEIA-FIUBA 2025):** [Zenodo DOI: 10.5281/zenodo.16914761](https://doi.org/10.5281/zenodo.16914761)
