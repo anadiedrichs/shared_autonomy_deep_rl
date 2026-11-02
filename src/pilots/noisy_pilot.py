@@ -34,6 +34,18 @@ class NoisyPilot(BasePilot):
         self.sigma = sigma
         self._rng = np.random.default_rng(seed)
 
+    def reset(self, seed: int | None = None):
+        """
+        Resets the pilot's state and re-seeds the Gaussian noise generator if a seed is provided.
+        """
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+        if hasattr(self.optimal_pilot, "reset"):
+            try:
+                self.optimal_pilot.reset(seed=seed)
+            except TypeError:
+                self.optimal_pilot.reset()
+
     def _get_base_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
         Retrieves the base action proposed by the optimal pilot according to its available interface.

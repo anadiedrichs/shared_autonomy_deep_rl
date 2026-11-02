@@ -17,7 +17,7 @@ class OptimalPilot(BasePilot):
     Unified interface for the optimal pilot, abstracting away the training framework.
     """
 
-    SUPPORTED_BACKENDS = ("sb3_ppo", "rltools_sac", "dummy", "heuristic")
+    SUPPORTED_BACKENDS = ("sb3_ppo", "rltools_sac", "rltools_td3", "dummy", "heuristic")
 
     def __init__(
         self,
@@ -89,8 +89,9 @@ class OptimalPilot(BasePilot):
                     f"Error al cargar el checkpoint SB3-PPO desde {self.checkpoint_path}: {e}"
                 )
 
-        elif self.backend == "rltools_sac":
+        elif self.backend in ("rltools_sac", "rltools_td3"):
             # Support for RLtools models and checkpoints (exported .h files)
+            loaded = False
             try:
                 import rltools
                 if (
@@ -99,15 +100,21 @@ class OptimalPilot(BasePilot):
                     and self.checkpoint_path.endswith((".h", ".hpp", ".c"))
                 ):
                     self._model = rltools.load_checkpoint_from_path(self.checkpoint_path)
+                    loaded = True
                 elif hasattr(rltools, "load"):
                     self._model = rltools.load(self.checkpoint_path)
-                else:
-                    self._model = self.checkpoint_path
-            except ImportError:
-                raise ImportError(
-                    "rltools no está instalado en el entorno actual. "
-                    "Instálalo con 'pip install rltools'."
-                )
+                    loaded = True
+            except (ImportError, Exception):
+                loaded = False
+
+            if not loaded and self.checkpoint_path is not None and self.checkpoint_path.endswith((".h", ".hpp", ".c")):
+                # Fast standalone parser fallback (NumPy inference directly from .h memory)
+                from src.training.rltools_td3 import RLtoolsParsedPolicy
+                self._model = RLtoolsParsedPolicy(self.checkpoint_path)
+                loaded = True
+
+            if not loaded and self._model is None:
+                self._model = self.checkpoint_path
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """
@@ -134,9 +141,9 @@ class OptimalPilot(BasePilot):
             # stable-baselines3 predict
             raw_act, _ = self._model.predict(obs, deterministic=self.deterministic)
 
-        elif self.backend == "rltools_sac":
+        elif self.backend in ("rltools_sac", "rltools_td3"):
             if self._model is None:
-                raise RuntimeError("El modelo RLtools-SAC no ha sido cargado.")
+                raise RuntimeError(f"El modelo {self.backend} no ha sido cargado.")
             if hasattr(self._model, "evaluate"):
                 raw_act = self._model.evaluate(obs)
             elif hasattr(self._model, "action"):

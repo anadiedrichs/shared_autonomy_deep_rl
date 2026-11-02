@@ -8,6 +8,7 @@ from src.pilots.heuristic_pilot import HeuristicPilot
 from src.pilots.laggy_pilot import LaggyPilot
 from src.pilots.noisy_pilot import NoisyPilot
 from src.pilots.optimal_pilot import OptimalPilot
+from src.pilots.standby_pilot import StandByPilot
 
 __all__ = [
     "BasePilot",
@@ -15,5 +16,6 @@ __all__ = [
     "OptimalPilot",
     "NoisyPilot",
     "LaggyPilot",
+    "StandByPilot",
     "HeuristicPilot",
 ]

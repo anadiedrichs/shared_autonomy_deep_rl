@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Synthetic pilot with reaction delay (LaggyPilot).
+Synthetic pilot with reaction delay and zero-order hold (LaggyPilot).
 
-Simulates human response time, latency, or teleoperation packet loss in continuous
-control. With probability 'p_repeat' (alpha parameter from the thesis) the command
-for the current step is dropped and a neutral action (zeros) is emitted instead,
-so the drone receives no motion command during that cycle.
+Simulates human reaction time, transmission latency, and low-frequency neuromuscular
+control following the methodology of Schaff & Walter (2020) [Residual Policy Learning
+for Shared Autonomy, RSS 2020] and Diedrichs (2025):
 
-Note: in the 2025 discrete formulation the delay repeated the previous action. In
-continuous control with a smoothness regularizer the optimal policy already satisfies
-a_t ~= a_{t-1}, so repeating the previous action has no measurable effect. Dropping
-the command makes the effective progress scale with (1 - p_repeat).
+At each simulation step:
+- With probability 'p_repeat' (p_lag in Schaff & Walter, 2020), the operator fails to
+  update the command, maintaining and repeating the previous continuous action (a_t = a_{t-1}).
+  This simulates zero-order hold (ZOH) and human reaction latency, causing velocity
+  and inertia accumulation when maneuvers or braking are urgently required.
+- With probability (1 - p_repeat), the operator successfully observes the current state
+  and computes an updated action from the base policy (a_t = pi*(s_t)).
+
+Optionally, a deterministic FIFO pipeline delay can be configured via 'delay_steps' (k steps),
+such that a_t = pi*(s_{t-k}), emulating pure transport latency.
 """
 
+from collections import deque
 import numpy as np
 
 from src.pilots.base_pilot import BasePilot
@@ -20,13 +26,14 @@ from src.pilots.base_pilot import BasePilot
 
 class LaggyPilot(BasePilot):
     """
-    Synthetic pilot that occasionally drops its command, emitting a neutral action.
+    Synthetic human pilot exhibiting reaction delay and command repetition (Schaff & Walter, 2020).
     """
 
     def __init__(
         self,
         optimal_pilot,
         p_repeat: float = 0.2,
+        delay_steps: int = 0,
         seed: int | None = None,
     ):
         """
@@ -34,23 +41,37 @@ class LaggyPilot(BasePilot):
 
         Args:
             optimal_pilot: Instance of the base or optimal pilot.
-            p_repeat: Probability of dropping the command at each step (between 0.0 and 1.0).
-                The name is kept for backward compatibility with the CLI and thesis notation.
+            p_repeat: Probability of repeating the previous continuous action at each step
+                (between 0.0 and 1.0), as defined by Schaff & Walter (2020).
+            delay_steps: Number of simulation steps for a deterministic FIFO pipeline delay.
+                If 0 (default), stochastic repetition (ZOH) governed by p_repeat is used.
             seed: Seed for the independent random number generator.
         """
         if not (0.0 <= p_repeat <= 1.0):
             raise ValueError("p_repeat debe ser un valor flotante en el rango [0.0, 1.0].")
+        if delay_steps < 0:
+            raise ValueError("delay_steps debe ser un entero no negativo.")
 
         self.optimal_pilot = optimal_pilot
         self.p_repeat = float(p_repeat)
+        self.delay_steps = int(delay_steps)
         self._rng = np.random.default_rng(seed)
-        self.last_action: np.ndarray = np.zeros(4, dtype=np.float32)
+        self.last_action: np.ndarray | None = None
+        self._action_queue: deque[np.ndarray] = deque(maxlen=max(1, self.delay_steps))
 
-    def reset(self):
+    def reset(self, seed: int | None = None):
         """
-        Resets the pilot's memory: the drone starts from a neutral (zero) command.
+        Resets the pilot's memory and clears action history.
         """
-        self.last_action = np.zeros(4, dtype=np.float32)
+        self.last_action = None
+        self._action_queue.clear()
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+        if hasattr(self.optimal_pilot, "reset"):
+            try:
+                self.optimal_pilot.reset(seed=seed)
+            except TypeError:
+                self.optimal_pilot.reset()
 
     def _get_base_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
@@ -73,18 +94,30 @@ class LaggyPilot(BasePilot):
 
     def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
         """
-        Returns the action to execute. If a delay occurs, the command is dropped and a
-        neutral action (zeros) is returned without querying the optimal pilot; otherwise,
-        queries the optimal pilot.
-
-        Args:
-            observation: Environment observation vector.
-
-        Returns:
-            np.ndarray: Continuous action vector in [-1.0, 1.0].
+        Returns the action to execute.
+        
+        If delay_steps > 0, enforces a fixed FIFO pipeline delay: commands are buffered
+        and emitted k steps later.
+        
+        Otherwise, applies the Schaff & Walter (2020) stochastic action repetition model:
+        repeats the previous continuous action with probability p_repeat; computes a new
+        action with probability (1 - p_repeat).
         """
-        if self._rng.random() < self.p_repeat:
-            action = np.zeros(4, dtype=np.float32)
+        # Deterministic FIFO delay mode
+        if self.delay_steps > 0:
+            fresh_action = self._get_base_action(observation, **kwargs)
+            self._action_queue.append(fresh_action.copy())
+            if len(self._action_queue) < self.delay_steps:
+                # Buffer filling phase: emit initial action or zeros
+                action = self._action_queue[0].copy()
+            else:
+                action = self._action_queue.popleft()
+            self.last_action = action.copy()
+            return action
+
+        # Schaff & Walter (2020) stochastic action repetition (Zero-Order Hold)
+        if self.last_action is not None and (self._rng.random() < self.p_repeat):
+            action = self.last_action.copy()
         else:
             action = self._get_base_action(observation, **kwargs)
 
