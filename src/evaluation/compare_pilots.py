@@ -99,6 +99,11 @@ def calculate_pilot_metrics(df: pd.DataFrame, label: str = "pilot") -> dict:
     n_timeout = int(timeout_mask.sum())
     timeout_rate = (n_timeout / n_total) * 100.0
 
+    std_rew = float(df["reward"].std() if n_total > 1 else 0.0)
+    sem_rew = float(std_rew / np.sqrt(n_total)) if n_total > 0 else 0.0
+    std_len = float(df["length"].std() if n_total > 1 else 0.0)
+    sem_len = float(std_len / np.sqrt(n_total)) if n_total > 0 else 0.0
+
     return {
         "pilot": label,
         "episodes": n_total,
@@ -106,9 +111,11 @@ def calculate_pilot_metrics(df: pd.DataFrame, label: str = "pilot") -> dict:
         "collision_rate": float(collision_rate),
         "timeout_rate": float(timeout_rate),
         "mean_reward": float(df["reward"].mean()),
-        "std_reward": float(df["reward"].std() if n_total > 1 else 0.0),
+        "std_reward": std_rew,
+        "sem_reward": sem_rew,
         "mean_length": float(df["length"].mean()),
-        "std_length": float(df["length"].std() if n_total > 1 else 0.0),
+        "std_length": std_len,
+        "sem_length": sem_len,
         "mean_final_distance": float(df["final_distance"].mean()),
     }
 

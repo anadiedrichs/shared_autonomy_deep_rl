@@ -24,6 +24,7 @@ import csv
 import glob
 import math
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -65,25 +66,35 @@ def read_csv_rows(csv_path: str) -> List[Dict[str, str]]:
         return []
 
 
-def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
+def compute_wilson_ci(k: int, n: int, confidence: float = 0.95) -> Tuple[float, float]:
     """
-    Agrega y computa métricas empíricas sobre una lista de archivos CSV de evaluación.
-    Calcula promedios, desviaciones estándar y frecuencias de terminación reales.
+    Calcula el intervalo de confianza de Wilson para una proporción binomial (k éxitos en n ensayos).
+    Proporciona cotas asimétricas rigurosas en [0.0, 100.0]%, evitando el colapso de la aproximación
+    normal Wald cuando p = 0 o p = 1.
     """
-    all_rows: List[Dict[str, str]] = []
-    loaded_files: List[str] = []
+    if n <= 0:
+        return 0.0, 0.0
+    z = 1.95996  # 95% bilateral
+    p = float(k) / float(n)
+    denom = 1.0 + (z**2) / float(n)
+    center = (p + (z**2) / (2.0 * float(n))) / denom
+    spread = (z * math.sqrt(max(0.0, p * (1.0 - p) / float(n) + (z**2) / (4.0 * (float(n)**2))))) / denom
+    lower = max(0.0, center - spread) * 100.0
+    upper = min(1.0, center + spread) * 100.0
+    return round(lower, 2), round(upper, 2)
 
-    for fp in file_paths:
-        matched = glob.glob(fp)
-        for p in matched:
-            rows = read_csv_rows(p)
-            if rows:
-                all_rows.extend(rows)
-                loaded_files.append(p)
+
+def compute_metrics_from_rows(all_rows: List[Dict[str, str]], loaded_files: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Agrega y computa métricas empíricas sobre una lista de filas de evaluación (diccionarios).
+    Calcula promedios, desviaciones estándar, frecuencias de terminación e intervalos de Wilson al 95%.
+    """
+    if loaded_files is None:
+        loaded_files = []
 
     total_eps = len(all_rows)
     if total_eps == 0:
-        return {"total": 0, "loaded_files": []}
+        return {"total": 0, "loaded_files": loaded_files}
 
     successes = 0
     falls = 0
@@ -96,6 +107,7 @@ def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
     obstacle_distances: List[float] = []
     altitudes: List[float] = []
     intervention_norms: List[float] = []
+    jerks: List[float] = []
 
     for r in all_rows:
         is_succ = str(r.get("success", "")).strip().lower() in ("true", "1")
@@ -118,6 +130,8 @@ def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
             ("min_obstacle_distance", obstacle_distances),
             ("final_obstacle_distance", obstacle_distances),
             ("mean_intervention_norm", intervention_norms),
+            ("mean_jerk", jerks),
+            ("jerk", jerks),
         ]:
             val_str = r.get(key, "")
             if val_str not in ("", None):
@@ -149,25 +163,42 @@ def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
     obs_m, obs_s = mean_std(obstacle_distances)
     alt_m, alt_s = mean_std(altitudes)
     norm_m, norm_s = mean_std(intervention_norms)
+    jerk_m, jerk_s = mean_std(jerks)
 
     # Supervivencia: episodios que no terminaron en colisión ni fuera de límites
     crashes = falls + oob
     surv_count = total_eps - crashes
     surv_pct = (surv_count / total_eps) * 100.0 if total_eps > 0 else 0.0
 
+    succ_w_low, succ_w_high = compute_wilson_ci(successes, total_eps)
+    fall_w_low, fall_w_high = compute_wilson_ci(falls, total_eps)
+    oob_w_low, oob_w_high = compute_wilson_ci(oob, total_eps)
+    timeout_w_low, timeout_w_high = compute_wilson_ci(timeouts, total_eps)
+    surv_w_low, surv_w_high = compute_wilson_ci(surv_count, total_eps)
+
     return {
         "total": total_eps,
         "loaded_files": loaded_files,
         "succ_count": successes,
         "succ_pct": (successes / total_eps) * 100.0,
+        "succ_w_low": succ_w_low,
+        "succ_w_high": succ_w_high,
         "fall_count": falls,
         "fall_pct": (falls / total_eps) * 100.0,
+        "fall_w_low": fall_w_low,
+        "fall_w_high": fall_w_high,
         "oob_count": oob,
         "oob_pct": (oob / total_eps) * 100.0,
+        "oob_w_low": oob_w_low,
+        "oob_w_high": oob_w_high,
         "timeout_count": timeouts,
         "timeout_pct": (timeouts / total_eps) * 100.0,
+        "timeout_w_low": timeout_w_low,
+        "timeout_w_high": timeout_w_high,
         "surv_count": surv_count,
         "surv_pct": surv_pct,
+        "surv_w_low": surv_w_low,
+        "surv_w_high": surv_w_high,
         "rew_m": rew_m,
         "rew_s": rew_s,
         "len_m": len_m,
@@ -181,7 +212,28 @@ def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
         "alt_s": alt_s,
         "norm_m": norm_m,
         "norm_s": norm_s,
+        "jerk_m": jerk_m,
+        "jerk_s": jerk_s,
     }
+
+
+def compute_metrics_from_csvs(file_paths: List[str]) -> Dict[str, Any]:
+    """
+    Agrega y computa métricas empíricas sobre una lista de archivos CSV de evaluación.
+    Calcula promedios, desviaciones estándar y frecuencias de terminación reales.
+    """
+    all_rows: List[Dict[str, str]] = []
+    loaded_files: List[str] = []
+
+    for fp in file_paths:
+        matched = glob.glob(fp)
+        for p in matched:
+            rows = read_csv_rows(p)
+            if rows:
+                all_rows.extend(rows)
+                loaded_files.append(p)
+
+    return compute_metrics_from_rows(all_rows, loaded_files)
 
 
 def format_table_ascii(headers: List[str], rows: List[List[str]]) -> str:
@@ -201,42 +253,85 @@ def format_table_ascii(headers: List[str], rows: List[List[str]]) -> str:
     return f"{header_str}\n{separator_str}\n" + "\n".join(row_strs)
 
 
-def export_latex_tabular(headers: List[str], rows: List[List[str]], filepath: str, caption: str, label: str):
-    """Exporta una tabla a código LaTeX tabular compatible con el documento del TFM."""
+def export_spanish_csv(headers: List[str], rows: List[List[str]], filepath: str):
+    """
+    Exporta una tabla a formato CSV estructurado en español:
+    - Campos delimitados por punto y coma (;)
+    - Separador decimal con coma (,)
+    - Limpieza de comandos LaTeX residuales
+    - Sincronización automática de los archivos .csv hacia UEM_TFM/tables/
+    - NUNCA sobreescribe los archivos .tex para proteger las configuraciones de formato del usuario.
+    """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    align = "|".join(["l"] + ["c"] * (len(headers) - 1))
-    lines = [
-        f"% Tabla generada automáticamente por scripts/reproduce_results.py",
-        f"\\begin{{table}}[ht!]",
-        f"\\centering",
-        f"\\caption{{{caption}}}",
-        f"\\label{{{label}}}",
-        f"\\begin{{tabular}}{{|{align}|}}",
-        f"\\hline",
-        " & ".join(f"\\textbf{{{h}}}" for h in headers) + " \\\\ \\hline",
-    ]
+
+    def clean_cell(cell: Any) -> str:
+        s = str(cell)
+        # Convertir punto decimal en números a coma decimal (ej. 10.87 -> 10,87)
+        s = re.sub(r'(\d+)\.(\d+)', r'\1,\2', s)
+        # Limpieza de comandos y notaciones LaTeX
+        s = s.replace('$', '')
+        s = s.replace(r'\pm', '±')
+        s = s.replace(r'\textbf', '')
+        s = s.replace(r'\mathrm', '')
+        s = s.replace(r'\mathbf', '')
+        s = s.replace(r'\|', '||')
+        s = s.replace(r'\_', '_')
+        s = s.replace(r'\&', '&')
+        s = s.replace(r'\%', '%')
+        s = s.replace(r'\sigma', 'σ')
+        s = s.replace('{', '').replace('}', '')
+        # Evitar colisión de separadores si algún campo contiene punto y coma
+        s = s.replace(';', ',')
+        return s.strip()
+
+    csv_rows = []
+    # Encabezados
+    csv_rows.append(";".join(clean_cell(h) for h in headers))
+    # Filas
     for row in rows:
-        escaped_row = [str(c).replace("%", "\\%").replace("_", "\\_").replace("±", "$\\pm$") for c in row]
-        lines.append(" & ".join(escaped_row) + " \\\\ \\hline")
-    lines.extend([
-        f"\\end{{tabular}}",
-        f"\\end{{table}}",
-        "",
-    ])
+        csv_rows.append(";".join(clean_cell(c) for c in row))
+
+    csv_content = "\n".join(csv_rows) + "\n"
+
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+        f.write(csv_content)
+
+    # Sincronizar automáticamente el archivo .csv con UEM_TFM/tables si existe
+    uem_tables = os.path.abspath(os.path.join(PROJECT_ROOT, "..", "UEM_TFM", "tables"))
+    if os.path.exists(uem_tables):
+        uem_fp = os.path.join(uem_tables, os.path.basename(filepath))
+        try:
+            with open(uem_fp, "w", encoding="utf-8") as f:
+                f.write(csv_content)
+        except OSError:
+            pass
+
+    # Sincronizar también con results_TFM/tables en la raíz si existe
+    root_res_tables = os.path.abspath(os.path.join(PROJECT_ROOT, "..", "results_TFM", "tables"))
+    if os.path.exists(root_res_tables):
+        root_fp = os.path.join(root_res_tables, os.path.basename(filepath))
+        try:
+            with open(root_fp, "w", encoding="utf-8") as f:
+                f.write(csv_content)
+        except OSError:
+            pass
+
+
+def export_latex_tabular(headers: List[str], rows: List[List[str]], filepath: str, caption: str, label: str):
+    """(Compatibilidad) Exporta tabla a LaTeX. En el nuevo flujo se utiliza export_spanish_csv."""
+    pass
 
 
 # ==============================================================================
 # TABLA 4.1: CONFIGURACIONES DE EVALUACIÓN DE PILOTOS DEGRADADOS
 # ==============================================================================
 def get_table_4_1() -> Tuple[List[str], List[List[str]]]:
-    headers = ["Perfil", "Identificador", "Parámetro Clave", "Mecanismo de Falla", "Impacto Operativo"]
+    headers = ["Perfil", "Identificador", "Parámetro clave", "Mecanismo de falla", "Impacto operativo"]
     rows = [
         [
             "HeuristicPilot (Control P)",
             "heuristic_prop",
-            "K_p = 2.0 (Directo)",
+            "K_p = 2.5 (Directo)",
             "Control proporcional cinemático sin horizonte temporal",
             "Navegación geométrica nominal determinista de referencia",
         ],
@@ -278,42 +373,54 @@ def get_table_4_1() -> Tuple[List[str], List[List[str]]]:
 def get_table_4_2(
     results_dir: str = "results_TFM",
     ppo_mode: str = "best",
+    seeds_mode: str = "100ep",
     return_metrics: bool = False,
 ) -> Any:
     # Buscar archivos de evaluación reales en results_TFM o logs
-    # Para TD3 y SAC evaluamos las 5 semillas maestras completas (500 episodios cada uno)
-    td3_patterns = [
-        os.path.join(results_dir, "logs", "td3", "eval_td3_seed_*_100ep.csv"),
-    ]
-    if not glob.glob(td3_patterns[0]):
-        td3_patterns = [os.path.join(results_dir, "logs", "td3", "eval_optimal_td3_100ep.csv")]
+    if seeds_mode == "100ep":
+        # Evaluación simétrica de 100 episodios por modelo con semillas de evaluación distintas
+        td3_patterns = [os.path.join(results_dir, "logs", "td3", "eval_td3_seed_42_100ep.csv")]
+        if not glob.glob(td3_patterns[0]):
+            td3_patterns = [os.path.join(results_dir, "logs", "td3", "eval_optimal_td3_100ep.csv")]
 
-    sac_patterns = [
-        os.path.join(results_dir, "logs", "sac", "eval_sac_seed_*_100ep.csv"),
-    ]
-    if not glob.glob(sac_patterns[0]):
-        sac_patterns = [os.path.join(results_dir, "logs", "sac", "eval_sac_optimal.csv")]
+        sac_patterns = [os.path.join(results_dir, "logs", "sac", "eval_sac_seed_42_100ep.csv")]
+        if not glob.glob(sac_patterns[0]):
+            sac_patterns = [os.path.join(results_dir, "logs", "sac", "eval_sac_optimal.csv")]
 
-    if ppo_mode == "best":
-        # Checkpoint óptimo validado (60k steps, 100% éxito)
-        best_csv = os.path.join(PROJECT_ROOT, "logs", "eval_ppo_60k_20.csv")
-        if os.path.exists(best_csv):
-            ppo_patterns = [best_csv]
-        else:
-            ppo_patterns = [os.path.join(results_dir, "logs", "td3", "eval_optimal_ppo_100ep.csv")]
+        ppo_patterns = [os.path.join(results_dir, "logs", "ppo", "eval_ppo_seed_42_100ep.csv")]
+        if not glob.glob(ppo_patterns[0]):
+            ppo_patterns = [os.path.join(results_dir, "logs", "ppo", "eval_ppo_60k_100ep.csv")]
+
+        headers = ["Métrica de evaluación", "PPO (SB3, 100 ep)", "SAC (RLtools, 100 ep)", "TD3 (RLtools, 100 ep)"]
     else:
-        # Todas las corridas de PPO registradas (incluyendo overfitted / timeouts)
-        ppo_patterns = [
-            os.path.join(results_dir, "logs", "ppo", "eval_ppo_seed_*_100ep.csv"),
-            os.path.join(PROJECT_ROOT, "logs", "eval_ppo_60k_20.csv"),
-        ]
+        # Modo multi-semilla (5 semillas x 100 episodios = 500 episodios cada uno)
+        td3_patterns = [os.path.join(results_dir, "logs", "td3", "eval_td3_seed_*_100ep.csv")]
+        if not glob.glob(td3_patterns[0]):
+            td3_patterns = [os.path.join(results_dir, "logs", "td3", "eval_optimal_td3_100ep.csv")]
+
+        sac_patterns = [os.path.join(results_dir, "logs", "sac", "eval_sac_seed_*_100ep.csv")]
+        if not glob.glob(sac_patterns[0]):
+            sac_patterns = [os.path.join(results_dir, "logs", "sac", "eval_sac_optimal.csv")]
+
+        ppo_patterns = [os.path.join(results_dir, "logs", "ppo", "eval_ppo_seed_*_100ep.csv")]
+        if not glob.glob(ppo_patterns[0]):
+            ppo_patterns = [os.path.join(results_dir, "logs", "ppo", "eval_ppo_seed_42_100ep.csv")]
+
+        headers = ["Métrica de evaluación", "PPO (SB3, 5 seeds)", "SAC (RLtools, 5 seeds)", "TD3 (RLtools, 5 seeds)"]
 
     m_td3 = compute_metrics_from_csvs(td3_patterns)
     m_sac = compute_metrics_from_csvs(sac_patterns)
     m_ppo = compute_metrics_from_csvs(ppo_patterns)
 
-    ppo_label = "PPO (SB3, Best 60k)" if ppo_mode == "best" else "PPO (SB3, Todas)"
-    headers = ["Métrica de evaluación", ppo_label, "SAC (RLtools, 5 seeds)", "TD3 (RLtools, 5 seeds)"]
+    def fmt_pct_wilson(m: Dict[str, Any], key_pct: str, key_cnt: str, key_w_low: str, key_w_high: str) -> str:
+        if not m or m.get("total", 0) == 0:
+            return "N/D"
+        pct = m[key_pct]
+        cnt = m[key_cnt]
+        tot = m["total"]
+        low = m.get(key_w_low, 0.0)
+        high = m.get(key_w_high, 100.0)
+        return f"{pct:.1f}% [{low:.1f}, {high:.1f}]% ({cnt}/{tot})"
 
     def fmt_stat(m: Dict[str, Any], key_m: str, key_s: str, unit: str = "", sign: bool = False) -> str:
         if not m or m.get("total", 0) == 0 or m.get(key_m) is None:
@@ -328,9 +435,9 @@ def get_table_4_2(
     rows = [
         [
             "Tasa de éxito (%)",
-            f"{m_ppo['succ_pct']:.1f}% ({m_ppo['succ_count']}/{m_ppo['total']})" if m_ppo.get("total", 0) > 0 else "N/D",
-            f"{m_sac['succ_pct']:.1f}% ({m_sac['succ_count']}/{m_sac['total']})" if m_sac.get("total", 0) > 0 else "N/D",
-            f"{m_td3['succ_pct']:.1f}% ({m_td3['succ_count']}/{m_td3['total']})" if m_td3.get("total", 0) > 0 else "N/D",
+            fmt_pct_wilson(m_ppo, "succ_pct", "succ_count", "succ_w_low", "succ_w_high"),
+            fmt_pct_wilson(m_sac, "succ_pct", "succ_count", "succ_w_low", "succ_w_high"),
+            fmt_pct_wilson(m_td3, "succ_pct", "succ_count", "succ_w_low", "succ_w_high"),
         ],
         [
             "Recompensa acumulada media",
@@ -370,9 +477,9 @@ def get_table_4_2(
         ],
         [
             "Supervivencia / Integridad",
-            f"{m_ppo['surv_pct']:.1f}% ({m_ppo['surv_count']}/{m_ppo['total']})" if m_ppo.get("total", 0) > 0 else "N/D",
-            f"{m_sac['surv_pct']:.1f}% ({m_sac['surv_count']}/{m_sac['total']})" if m_sac.get("total", 0) > 0 else "N/D",
-            f"{m_td3['surv_pct']:.1f}% ({m_td3['surv_count']}/{m_td3['total']})" if m_td3.get("total", 0) > 0 else "N/D",
+            fmt_pct_wilson(m_ppo, "surv_pct", "surv_count", "surv_w_low", "surv_w_high"),
+            fmt_pct_wilson(m_sac, "surv_pct", "surv_count", "surv_w_low", "surv_w_high"),
+            fmt_pct_wilson(m_td3, "surv_pct", "surv_count", "surv_w_low", "surv_w_high"),
         ],
         [
             "Artefacto de despliegue",
@@ -391,7 +498,11 @@ def get_table_4_2(
 # ==============================================================================
 # TABLA 4.3: DESEMPEÑO DE PILOTOS SINTÉTICOS DEGRADADOS Y HEURÍSTICO
 # ==============================================================================
-def get_table_4_3(results_dir: str = "results_TFM", return_metrics: bool = False) -> Any:
+def get_table_4_3(
+    results_dir: str = "results_TFM",
+    seeds_mode: str = "100ep",
+    return_metrics: bool = False,
+) -> Any:
     deg_dir = os.path.join(results_dir, "logs", "degraded")
 
     # Configuraciones evaluadas multisemilla
@@ -399,8 +510,8 @@ def get_table_4_3(results_dir: str = "results_TFM", return_metrics: bool = False
         ("HeuristicPilot (Control P)", ["heuristic_prop"]),
         ("NoisyPilot (sigma = 0.50)", ["noisy_sigma_0.5"]),
         ("NoisyPilot (sigma = 1.00)", ["noisy_sigma_1.0"]),
-        ("LaggyPilot (p = 0.80)", ["laggy_p_0.8"]),
-        ("StandByPilot (p = 0.80)", ["standby_p_0.8"]),
+        ("LaggyPilot (p_repeat = 0.80)", ["laggy_p_0.8"]),
+        ("StandByPilot (p_drop = 0.80)", ["standby_p_0.8"]),
     ]
 
     headers = [
@@ -418,7 +529,10 @@ def get_table_4_3(results_dir: str = "results_TFM", return_metrics: bool = False
     for label, prefixes in configs:
         patterns = []
         for pfx in prefixes:
-            patterns.append(os.path.join(deg_dir, f"{pfx}*.csv"))
+            if seeds_mode == "100ep":
+                patterns.append(os.path.join(deg_dir, f"{pfx}_seed_42.csv"))
+            else:
+                patterns.append(os.path.join(deg_dir, f"{pfx}_seed_*.csv"))
 
         m = compute_metrics_from_csvs(patterns)
         metrics_dict[label] = m
@@ -428,7 +542,7 @@ def get_table_4_3(results_dir: str = "results_TFM", return_metrics: bool = False
             rew_str = f"{m['rew_m']:+.2f} ± {m['rew_s']:.2f}"
             dist_str = f"{m['dist_m']:.3f} ± {m['dist_s']:.3f}"
             alt_str = f"{m['alt_m']:.2f} ± {m['alt_s']:.2f}" if m.get("alt_m") is not None else "N/D"
-            succ_str = f"{m['succ_pct']:.1f}% ({m['succ_count']}/{m['total']})"
+            succ_str = f"{m['succ_pct']:.1f}% [{m['succ_w_low']:.1f}, {m['succ_w_high']:.1f}]% ({m['succ_count']}/{m['total']})"
             rows.append([label, succ_str, rew_str, dist_str, alt_str, t_str])
         else:
             rows.append([label, "N/D", "N/D", "N/D", "N/D", "Sin archivos CSV"])
@@ -439,35 +553,69 @@ def get_table_4_3(results_dir: str = "results_TFM", return_metrics: bool = False
 
 
 # ==============================================================================
-# TABLA 4.4: COPILOTO RESIDUAL CON PILOTO RUIDOSO
+# TABLA 4.4: COPILOTO CONSTREÑIDO RESIDUAL CON PILOTO RUIDOSO
 # ==============================================================================
-def get_table_4_4(results_dir: str = "results_TFM", return_metrics: bool = False) -> Any:
-    solo_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_noisy_03.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_noisy_03.csv"),
-    ]
-    ppo_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_noisy_assisted_03_ppo.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_noisy_assisted_03_ppo.csv"),
-    ]
-    sac_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_noisy_assisted_03_sac.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_noisy_assisted_03_sac.csv"),
+def get_table_4_4(
+    results_dir: str = "results_TFM",
+    seeds_mode: str = "100ep",
+    return_metrics: bool = False,
+) -> Any:
+    cop_episodes_csv = os.path.join(results_dir, "logs", "copilot_eval", "eval_copilot_episodes.csv")
+    rows = read_csv_rows(cop_episodes_csv) if os.path.exists(cop_episodes_csv) else []
+
+    rows_n05_solo = [r for r in rows if r.get("pilot_key") == "noisy_0.5" and r.get("mode") == "placebo"]
+    rows_n05_asst = [r for r in rows if r.get("pilot_key") == "noisy_0.5" and r.get("mode") == "assisted"]
+    rows_n10_solo = [r for r in rows if r.get("pilot_key") == "noisy_1.0" and r.get("mode") == "placebo"]
+    rows_n10_asst = [r for r in rows if r.get("pilot_key") == "noisy_1.0" and r.get("mode") == "assisted"]
+
+    deg_dir = os.path.join(results_dir, "logs", "degraded")
+    if (len(rows_n05_solo) < len(rows_n05_asst) or len(rows_n05_solo) == 0) and len(rows_n05_asst) > 0:
+        patt = os.path.join(deg_dir, "noisy_sigma_0.5_seed_42.csv" if seeds_mode == "100ep" else "noisy_sigma_0.5_seed_*.csv")
+        s_rows = []
+        for p in sorted(glob.glob(patt)):
+            s_rows.extend(read_csv_rows(p))
+        if s_rows:
+            for r in s_rows:
+                r["mean_intervention_norm"] = "0.0"
+                r["mean_jerk"] = "0.0"
+            rows_n05_solo = s_rows
+
+    if (len(rows_n10_solo) < len(rows_n10_asst) or len(rows_n10_solo) == 0) and len(rows_n10_asst) > 0:
+        patt = os.path.join(deg_dir, "noisy_sigma_1.0_seed_42.csv" if seeds_mode == "100ep" else "noisy_sigma_1.0_seed_*.csv")
+        s_rows = []
+        for p in sorted(glob.glob(patt)):
+            s_rows.extend(read_csv_rows(p))
+        if s_rows:
+            for r in s_rows:
+                r["mean_intervention_norm"] = "0.0"
+                r["mean_jerk"] = "0.0"
+            rows_n10_solo = s_rows
+
+    m_n05_solo = compute_metrics_from_rows(rows_n05_solo, [cop_episodes_csv])
+    m_n05_asst = compute_metrics_from_rows(rows_n05_asst, [cop_episodes_csv])
+    m_n10_solo = compute_metrics_from_rows(rows_n10_solo, [cop_episodes_csv])
+    m_n10_asst = compute_metrics_from_rows(rows_n10_asst, [cop_episodes_csv])
+
+    headers = [
+        "Métrica de evaluación",
+        "Noisy solo (σ = 0.50)",
+        "Con copiloto (σ = 0.50)",
+        "Noisy solo (σ = 1.00)",
+        "Con copiloto (σ = 1.00)",
     ]
 
-    m_solo = compute_metrics_from_csvs(solo_paths)
-    m_ppo = compute_metrics_from_csvs(ppo_paths)
-    m_sac = compute_metrics_from_csvs(sac_paths)
+    def row_pct(label: str, key_pct: str, key_cnt: str, key_w_low: str, key_w_high: str) -> List[str]:
+        def fmt(m):
+            if not m or m.get("total", 0) == 0:
+                return "N/D"
+            pct = m[key_pct]
+            cnt = m[key_cnt]
+            tot = m["total"]
+            low = m.get(key_w_low, 0.0)
+            high = m.get(key_w_high, 100.0)
+            return f"{pct:.1f}% [{low:.1f}, {high:.1f}]% ({cnt}/{tot})"
 
-    headers = ["Métrica de evaluación", "Piloto Ruidoso Solo (σ=0.3)", "Con Copiloto PPO", "Con Copiloto SAC"]
-
-    def row_pct(label: str, key_pct: str, key_cnt: str) -> List[str]:
-        return [
-            label,
-            f"{m_solo[key_pct]:.1f}% ({m_solo[key_cnt]}/{m_solo['total']})" if m_solo.get("total", 0) > 0 else "N/D",
-            f"{m_ppo[key_pct]:.1f}% ({m_ppo[key_cnt]}/{m_ppo['total']})" if m_ppo.get("total", 0) > 0 else "N/D",
-            f"{m_sac[key_pct]:.1f}% ({m_sac[key_cnt]}/{m_sac['total']})" if m_sac.get("total", 0) > 0 else "N/D",
-        ]
+        return [label, fmt(m_n05_solo), fmt(m_n05_asst), fmt(m_n10_solo), fmt(m_n10_asst)]
 
     def row_stat(label: str, key_m: str, key_s: str, unit: str = "", sign: bool = False) -> List[str]:
         def fmt(m):
@@ -480,68 +628,103 @@ def get_table_4_4(results_dir: str = "results_TFM", return_metrics: bool = False
                 return f"{pfx}{val_m:.2f} ± {val_s:.2f} {unit}".strip()
             return f"{pfx}{val_m:.2f} {unit}".strip()
 
-        return [label, fmt(m_solo), fmt(m_ppo), fmt(m_sac)]
+        return [label, fmt(m_n05_solo), fmt(m_n05_asst), fmt(m_n10_solo), fmt(m_n10_asst)]
 
     rows = [
-        row_pct("Tasa de éxito (%)", "succ_pct", "succ_count"),
+        row_pct("Tasa de éxito (%)", "succ_pct", "succ_count", "succ_w_low", "succ_w_high"),
         row_stat("Recompensa media acumulada", "rew_m", "rew_s", sign=True),
         row_stat("Longitud media global (pasos)", "len_m", "len_s", unit="pasos"),
         [
             "Tiempo medio de vuelo",
-            f"{m_solo.get('time_s', 0.0):.2f} s" if m_solo.get("total", 0) > 0 else "N/D",
-            f"{m_ppo.get('time_s', 0.0):.2f} s" if m_ppo.get("total", 0) > 0 else "N/D",
-            f"{m_sac.get('time_s', 0.0):.2f} s" if m_sac.get("total", 0) > 0 else "N/D",
+            f"{m_n05_solo.get('time_s', 0.0):.2f} s" if m_n05_solo.get("total", 0) > 0 else "N/D",
+            f"{m_n05_asst.get('time_s', 0.0):.2f} s" if m_n05_asst.get("total", 0) > 0 else "N/D",
+            f"{m_n10_solo.get('time_s', 0.0):.2f} s" if m_n10_solo.get("total", 0) > 0 else "N/D",
+            f"{m_n10_asst.get('time_s', 0.0):.2f} s" if m_n10_asst.get("total", 0) > 0 else "N/D",
         ],
         row_stat("Distancia final a la meta (m)", "dist_m", "dist_s", unit="m"),
-        row_stat("Distancia mín. a obstáculo (m)", "obs_m", "obs_s", unit="m"),
-        row_stat("Altitud final media de vuelo (m)", "alt_m", "alt_s", unit="m"),
-        row_pct("Caídas al suelo (fall)", "fall_pct", "fall_count"),
-        row_pct("Salida de límites (out of bounds)", "oob_pct", "oob_count"),
-        row_pct("Tiempo agotado (timeout)", "timeout_pct", "timeout_count"),
-        row_pct("Supervivencia / Integridad estructural", "surv_pct", "surv_count"),
+        row_pct("Caídas al suelo (fall)", "fall_pct", "fall_count", "fall_w_low", "fall_w_high"),
+        row_pct("Salida de límites (out of bounds)", "oob_pct", "oob_count", "oob_w_low", "oob_w_high"),
+        row_pct("Tiempo agotado (timeout)", "timeout_pct", "timeout_count", "timeout_w_low", "timeout_w_high"),
+        row_pct("Supervivencia / Integridad estructural", "surv_pct", "surv_count", "surv_w_low", "surv_w_high"),
         row_stat("Norma de intervención media (||a_r||)", "norm_m", "norm_s"),
+        row_stat("Suavidad de acción (Jerk medio)", "jerk_m", "jerk_s"),
     ]
 
-    metrics_dict = {"solo": m_solo, "copilot_ppo": m_ppo, "copilot_sac": m_sac}
+    metrics_dict = {
+        "noisy_05_solo": m_n05_solo,
+        "noisy_05_asst": m_n05_asst,
+        "noisy_10_solo": m_n10_solo,
+        "noisy_10_asst": m_n10_asst,
+    }
     if return_metrics:
         return headers, rows, metrics_dict
     return headers, rows
 
 
 # ==============================================================================
-# TABLA 4.5: COPILOTO RESIDUAL CON PILOTO LENTO / LAGGED
+# TABLA 4.5: COPILOTO CONSTREÑIDO RESIDUAL CON PILOTOS DE LATENCIA Y PAQUETES
 # ==============================================================================
-def get_table_4_5(results_dir: str = "results_TFM", return_metrics: bool = False) -> Any:
-    solo_25_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_laggy_drop_0025.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_laggy_drop_0025.csv"),
-    ]
-    cop_25_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_lagged_assisted_0025_ppo.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_lagged_assisted_0025_ppo.csv"),
-    ]
-    solo_50_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_laggy_drop_005.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_laggy_drop_005.csv"),
-    ]
-    cop_50_paths = [
-        os.path.join(results_dir, "logs", "copilot", "eval_lagged_assisted_005_ppo.csv"),
-        os.path.join(PROJECT_ROOT, "logs", "eval_lagged_assisted_005_ppo.csv"),
+def get_table_4_5(
+    results_dir: str = "results_TFM",
+    seeds_mode: str = "100ep",
+    return_metrics: bool = False,
+) -> Any:
+    cop_episodes_csv = os.path.join(results_dir, "logs", "copilot_eval", "eval_copilot_episodes.csv")
+    rows = read_csv_rows(cop_episodes_csv) if os.path.exists(cop_episodes_csv) else []
+
+    rows_lag_solo = [r for r in rows if r.get("pilot_key") == "laggy_0.8" and r.get("mode") == "placebo"]
+    rows_lag_asst = [r for r in rows if r.get("pilot_key") == "laggy_0.8" and r.get("mode") == "assisted"]
+    rows_std_solo = [r for r in rows if r.get("pilot_key") == "standby_0.8" and r.get("mode") == "placebo"]
+    rows_std_asst = [r for r in rows if r.get("pilot_key") == "standby_0.8" and r.get("mode") == "assisted"]
+
+    deg_dir = os.path.join(results_dir, "logs", "degraded")
+    if (len(rows_lag_solo) < len(rows_lag_asst) or len(rows_lag_solo) == 0) and len(rows_lag_asst) > 0:
+        patt = os.path.join(deg_dir, "laggy_p_0.8_seed_42.csv" if seeds_mode == "100ep" else "laggy_p_0.8_seed_*.csv")
+        s_rows = []
+        for p in sorted(glob.glob(patt)):
+            s_rows.extend(read_csv_rows(p))
+        if s_rows:
+            for r in s_rows:
+                r["mean_intervention_norm"] = "0.0"
+                r["mean_jerk"] = "0.0"
+            rows_lag_solo = s_rows
+
+    if (len(rows_std_solo) < len(rows_std_asst) or len(rows_std_solo) == 0) and len(rows_std_asst) > 0:
+        patt = os.path.join(deg_dir, "standby_p_0.8_seed_42.csv" if seeds_mode == "100ep" else "standby_p_0.8_seed_*.csv")
+        s_rows = []
+        for p in sorted(glob.glob(patt)):
+            s_rows.extend(read_csv_rows(p))
+        if s_rows:
+            for r in s_rows:
+                r["mean_intervention_norm"] = "0.0"
+                r["mean_jerk"] = "0.0"
+            rows_std_solo = s_rows
+
+    m_lag_solo = compute_metrics_from_rows(rows_lag_solo, [cop_episodes_csv])
+    m_lag_asst = compute_metrics_from_rows(rows_lag_asst, [cop_episodes_csv])
+    m_std_solo = compute_metrics_from_rows(rows_std_solo, [cop_episodes_csv])
+    m_std_asst = compute_metrics_from_rows(rows_std_asst, [cop_episodes_csv])
+
+    headers = [
+        "Métrica de evaluación",
+        "Laggy solo (p_repeat = 0.80)",
+        "Con copiloto (p_repeat = 0.80)",
+        "StandBy solo (p_drop = 0.80)",
+        "Con copiloto (p_drop = 0.80)",
     ]
 
-    m_s25 = compute_metrics_from_csvs(solo_25_paths)
-    m_c25 = compute_metrics_from_csvs(cop_25_paths)
-    m_s50 = compute_metrics_from_csvs(solo_50_paths)
-    m_c50 = compute_metrics_from_csvs(cop_50_paths)
-
-    headers = ["Métrica de evaluación", "Lento Solo (p=2.5%)", "Con Copiloto (p=2.5%)", "Lento Solo (p=5.0%)", "Con Copiloto (p=5.0%)"]
-
-    def row_pct(label: str, key_pct: str, key_cnt: str) -> List[str]:
+    def row_pct(label: str, key_pct: str, key_cnt: str, key_w_low: str, key_w_high: str) -> List[str]:
         def fmt(m):
             if not m or m.get("total", 0) == 0:
                 return "N/D"
-            return f"{m[key_pct]:.1f}% ({m[key_cnt]}/{m['total']})"
-        return [label, fmt(m_s25), fmt(m_c25), fmt(m_s50), fmt(m_c50)]
+            pct = m[key_pct]
+            cnt = m[key_cnt]
+            tot = m["total"]
+            low = m.get(key_w_low, 0.0)
+            high = m.get(key_w_high, 100.0)
+            return f"{pct:.1f}% [{low:.1f}, {high:.1f}]% ({cnt}/{tot})"
+
+        return [label, fmt(m_lag_solo), fmt(m_lag_asst), fmt(m_std_solo), fmt(m_std_asst)]
 
     def row_stat(label: str, key_m: str, key_s: str, unit: str = "", sign: bool = False) -> List[str]:
         def fmt(m):
@@ -553,40 +736,35 @@ def get_table_4_5(results_dir: str = "results_TFM", return_metrics: bool = False
             if val_s > 0.001:
                 return f"{pfx}{val_m:.2f} ± {val_s:.2f} {unit}".strip()
             return f"{pfx}{val_m:.2f} {unit}".strip()
-        return [label, fmt(m_s25), fmt(m_c25), fmt(m_s50), fmt(m_c50)]
 
-    def row_survival(label: str) -> List[str]:
-        def fmt(m):
-            if not m or m.get("total", 0) == 0:
-                return "N/D"
-            crashes = m.get("fall_count", 0) + m.get("oob_count", 0)
-            surv = m["total"] - crashes
-            pct = (surv / m["total"]) * 100.0
-            return f"{pct:.1f}% ({surv}/{m['total']})"
-        return [label, fmt(m_s25), fmt(m_c25), fmt(m_s50), fmt(m_c50)]
+        return [label, fmt(m_lag_solo), fmt(m_lag_asst), fmt(m_std_solo), fmt(m_std_asst)]
 
     rows = [
-        row_pct("Tasa de éxito (%)", "succ_pct", "succ_count"),
+        row_pct("Tasa de éxito (%)", "succ_pct", "succ_count", "succ_w_low", "succ_w_high"),
         row_stat("Recompensa media acumulada", "rew_m", "rew_s", sign=True),
         row_stat("Longitud media de episodio (pasos)", "len_m", "len_s", unit="pasos"),
         [
             "Tiempo medio de vuelo",
-            f"{m_s25.get('time_s', 0.0):.2f} s" if m_s25.get("total", 0) > 0 else "N/D",
-            f"{m_c25.get('time_s', 0.0):.2f} s" if m_c25.get("total", 0) > 0 else "N/D",
-            f"{m_s50.get('time_s', 0.0):.2f} s" if m_s50.get("total", 0) > 0 else "N/D",
-            f"{m_c50.get('time_s', 0.0):.2f} s" if m_c50.get("total", 0) > 0 else "N/D",
+            f"{m_lag_solo.get('time_s', 0.0):.2f} s" if m_lag_solo.get("total", 0) > 0 else "N/D",
+            f"{m_lag_asst.get('time_s', 0.0):.2f} s" if m_lag_asst.get("total", 0) > 0 else "N/D",
+            f"{m_std_solo.get('time_s', 0.0):.2f} s" if m_std_solo.get("total", 0) > 0 else "N/D",
+            f"{m_std_asst.get('time_s', 0.0):.2f} s" if m_std_asst.get("total", 0) > 0 else "N/D",
         ],
         row_stat("Distancia final a la meta (m)", "dist_m", "dist_s", unit="m"),
-        row_stat("Distancia mín. a obstáculo (m)", "obs_m", "obs_s", unit="m"),
-        row_stat("Altitud final media de vuelo (m)", "alt_m", "alt_s", unit="m"),
-        row_pct("Caídas al suelo (fall)", "fall_pct", "fall_count"),
-        row_pct("Salida de límites (out of bounds)", "oob_pct", "oob_count"),
-        row_pct("Tiempo agotado (timeout)", "timeout_pct", "timeout_count"),
-        row_pct("Supervivencia / Integridad estructural", "surv_pct", "surv_count"),
+        row_pct("Caídas al suelo (fall)", "fall_pct", "fall_count", "fall_w_low", "fall_w_high"),
+        row_pct("Salida de límites (out of bounds)", "oob_pct", "oob_count", "oob_w_low", "oob_w_high"),
+        row_pct("Tiempo agotado (timeout)", "timeout_pct", "timeout_count", "timeout_w_low", "timeout_w_high"),
+        row_pct("Supervivencia / Integridad estructural", "surv_pct", "surv_count", "surv_w_low", "surv_w_high"),
         row_stat("Norma de intervención media (||a_r||)", "norm_m", "norm_s"),
+        row_stat("Suavidad de acción (Jerk medio)", "jerk_m", "jerk_s"),
     ]
 
-    metrics_dict = {"solo_25": m_s25, "cop_25": m_c25, "solo_50": m_s50, "cop_50": m_c50}
+    metrics_dict = {
+        "laggy_solo": m_lag_solo,
+        "laggy_asst": m_lag_asst,
+        "standby_solo": m_std_solo,
+        "standby_asst": m_std_asst,
+    }
     if return_metrics:
         return headers, rows, metrics_dict
     return headers, rows
@@ -601,6 +779,7 @@ def generate_reproduced_plots(
     m_opt: Optional[Dict[str, Any]] = None,
     m_deg: Optional[Dict[str, Any]] = None,
     m_cop_noisy: Optional[Dict[str, Any]] = None,
+    m_cop_slow: Optional[Dict[str, Any]] = None,
 ):
     """Genera figuras comparativas en formato PNG usando las métricas reales calculadas."""
     if not HAS_MATPLOTLIB:
@@ -609,6 +788,7 @@ def generate_reproduced_plots(
 
     figs_dir = os.path.join(output_dir, "figures")
     os.makedirs(figs_dir, exist_ok=True)
+    uem_imgs = os.path.abspath(os.path.join(PROJECT_ROOT, "..", "UEM_TFM", "imagenes"))
 
     if m_opt is None:
         _, _, m_opt = get_table_4_2(results_dir, return_metrics=True)
@@ -616,6 +796,8 @@ def generate_reproduced_plots(
         _, _, m_deg = get_table_4_3(results_dir, return_metrics=True)
     if m_cop_noisy is None:
         _, _, m_cop_noisy = get_table_4_4(results_dir, return_metrics=True)
+    if m_cop_slow is None:
+        _, _, m_cop_slow = get_table_4_5(results_dir, return_metrics=True)
 
     # 1. Comparativa de Éxito de Políticas Autónomas y Degradadas
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -652,30 +834,33 @@ def generate_reproduced_plots(
         plt.close(fig)
 
     # 2. Distribución de Terminaciones en Asistencia Residual (Piloto Ruidoso)
-    m_s = m_cop_noisy.get("solo", {})
-    m_p = m_cop_noisy.get("copilot_ppo", {})
-    m_c = m_cop_noisy.get("copilot_sac", {})
+    m_n05_s = m_cop_noisy.get("noisy_05_solo", {})
+    m_n05_a = m_cop_noisy.get("noisy_05_asst", {})
+    m_n10_s = m_cop_noisy.get("noisy_10_solo", {})
+    m_n10_a = m_cop_noisy.get("noisy_10_asst", {})
 
-    if m_s.get("total", 0) > 0:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        categories = ["Éxito Meta", "Timeout", "Caída (Fall)", "Fuera Límites"]
+    if m_n05_s.get("total", 0) > 0:
+        fig, ax = plt.subplots(figsize=(9, 5))
+        categories = ["Éxito Meta", "Timeout", "Caída (Fall)", "Supervivencia"]
         x = np.arange(len(categories)) if HAS_NUMPY else [0, 1, 2, 3]
-        w = 0.28
+        w = 0.20
 
-        solo_vals = [m_s["succ_pct"], m_s["timeout_pct"], m_s["fall_pct"], m_s["oob_pct"]]
-        ppo_vals = [m_p.get("succ_pct", 0), m_p.get("timeout_pct", 0), m_p.get("fall_pct", 0), m_p.get("oob_pct", 0)] if m_p else [0,0,0,0]
-        sac_vals = [m_c.get("succ_pct", 0), m_c.get("timeout_pct", 0), m_c.get("fall_pct", 0), m_c.get("oob_pct", 0)] if m_c else [0,0,0,0]
+        v1 = [m_n05_s.get("succ_pct", 0), m_n05_s.get("timeout_pct", 0), m_n05_s.get("fall_pct", 0), m_n05_s.get("surv_pct", 0)]
+        v2 = [m_n05_a.get("succ_pct", 0), m_n05_a.get("timeout_pct", 0), m_n05_a.get("fall_pct", 0), m_n05_a.get("surv_pct", 0)]
+        v3 = [m_n10_s.get("succ_pct", 0), m_n10_s.get("timeout_pct", 0), m_n10_s.get("fall_pct", 0), m_n10_s.get("surv_pct", 0)]
+        v4 = [m_n10_a.get("succ_pct", 0), m_n10_a.get("timeout_pct", 0), m_n10_a.get("fall_pct", 0), m_n10_a.get("surv_pct", 0)]
 
         if HAS_NUMPY:
-            ax.bar(x - w, solo_vals, w, label="Piloto Solo (σ=0.30)", color="#e74c3c", alpha=0.85)
-            ax.bar(x, ppo_vals, w, label="+ Copiloto PPO", color="#2ecc71", alpha=0.85)
-            ax.bar(x + w, sac_vals, w, label="+ Copiloto SAC", color="#3498db", alpha=0.85)
+            ax.bar(x - 1.5 * w, v1, w, label="Noisy Solo (σ=0.50)", color="#e74c3c", alpha=0.85)
+            ax.bar(x - 0.5 * w, v2, w, label="+ Copiloto SAC (σ=0.50)", color="#2ecc71", alpha=0.85)
+            ax.bar(x + 0.5 * w, v3, w, label="Noisy Solo (σ=1.00)", color="#962d22", alpha=0.85)
+            ax.bar(x + 1.5 * w, v4, w, label="+ Copiloto SAC (σ=1.00)", color="#3498db", alpha=0.85)
             ax.set_xticks(x)
             ax.set_xticklabels(categories, fontsize=10, fontweight="bold")
 
         ax.set_ylabel("Porcentaje de Episodios (%)", fontsize=11, fontweight="bold")
-        ax.set_title("Distribución de Terminaciones Empíricas (Asistencia Residual)", fontsize=12, fontweight="bold")
-        ax.set_ylim(0, 75)
+        ax.set_title("Distribución de Terminaciones Empíricas (Piloto Ruidoso)", fontsize=12, fontweight="bold")
+        ax.set_ylim(0, 115)
         ax.grid(axis="y", linestyle="--", alpha=0.4)
         ax.legend(loc="upper right")
 
@@ -683,6 +868,108 @@ def generate_reproduced_plots(
         p2 = os.path.join(figs_dir, "distribucion_terminaciones_copiloto.png")
         fig.savefig(p2, dpi=300)
         plt.close(fig)
+
+    # 3. Distribución de Terminaciones en Asistencia Residual (Laggy y StandBy)
+    m_lag_s = m_cop_slow.get("laggy_solo", {})
+    m_lag_a = m_cop_slow.get("laggy_asst", {})
+    m_std_s = m_cop_slow.get("standby_solo", {})
+    m_std_a = m_cop_slow.get("standby_asst", {})
+
+    if m_lag_s.get("total", 0) > 0 and HAS_NUMPY:
+        fig, ax = plt.subplots(figsize=(9, 5))
+        categories = ["Éxito Meta", "Timeout", "Caída (Fall)", "Supervivencia"]
+        x = np.arange(len(categories))
+        w = 0.20
+
+        v1 = [m_lag_s.get("succ_pct", 0), m_lag_s.get("timeout_pct", 0), m_lag_s.get("fall_pct", 0), m_lag_s.get("surv_pct", 0)]
+        v2 = [m_lag_a.get("succ_pct", 0), m_lag_a.get("timeout_pct", 0), m_lag_a.get("fall_pct", 0), m_lag_a.get("surv_pct", 0)]
+        v3 = [m_std_s.get("succ_pct", 0), m_std_s.get("timeout_pct", 0), m_std_s.get("fall_pct", 0), m_std_s.get("surv_pct", 0)]
+        v4 = [m_std_a.get("succ_pct", 0), m_std_a.get("timeout_pct", 0), m_std_a.get("fall_pct", 0), m_std_a.get("surv_pct", 0)]
+
+        ax.bar(x - 1.5 * w, v1, w, label="Laggy Solo (p=0.80)", color="#f39c12", alpha=0.85)
+        ax.bar(x - 0.5 * w, v2, w, label="+ Copiloto SAC (Laggy)", color="#27ae60", alpha=0.85)
+        ax.bar(x + 0.5 * w, v3, w, label="StandBy Solo (p=0.80)", color="#8e44ad", alpha=0.85)
+        ax.bar(x + 1.5 * w, v4, w, label="+ Copiloto SAC (StandBy)", color="#2980b9", alpha=0.85)
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories, fontsize=10, fontweight="bold")
+
+        ax.set_ylabel("Porcentaje de Episodios (%)", fontsize=11, fontweight="bold")
+        ax.set_title("Distribución de Terminaciones Empíricas (Laggy y StandBy)", fontsize=12, fontweight="bold")
+        ax.set_ylim(0, 115)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.legend(loc="upper right")
+
+        plt.tight_layout()
+        p3 = os.path.join(figs_dir, "distribucion_terminaciones_copiloto_lento.png")
+        fig.savefig(p3, dpi=300)
+        plt.close(fig)
+
+    # 4. Dashboard Global Comparativo (4 paneles)
+    profiles = ["Noisy (σ=0.50)", "Noisy (σ=1.00)", "Laggy (p=0.80)", "StandBy (p=0.80)"]
+    succ_solo = [m_n05_s.get("succ_pct", 0), m_n10_s.get("succ_pct", 0), m_lag_s.get("succ_pct", 0), m_std_s.get("succ_pct", 0)]
+    succ_asst = [m_n05_a.get("succ_pct", 0), m_n10_a.get("succ_pct", 0), m_lag_a.get("succ_pct", 0), m_std_a.get("succ_pct", 0)]
+    fall_solo = [m_n05_s.get("fall_pct", 0), m_n10_s.get("fall_pct", 0), m_lag_s.get("fall_pct", 0), m_std_s.get("fall_pct", 0)]
+    fall_asst = [m_n05_a.get("fall_pct", 0), m_n10_a.get("fall_pct", 0), m_lag_a.get("fall_pct", 0), m_std_a.get("fall_pct", 0)]
+    norm_asst = [m_n05_a.get("norm_m", 0), m_n10_a.get("norm_m", 0), m_lag_a.get("norm_m", 0), m_std_a.get("norm_m", 0)]
+    jerk_asst = [m_n05_a.get("jerk_m", 0), m_n10_a.get("jerk_m", 0), m_lag_a.get("jerk_m", 0), m_std_a.get("jerk_m", 0)]
+
+    if HAS_NUMPY and m_n05_s.get("total", 0) > 0:
+        fig, axs = plt.subplots(2, 2, figsize=(13, 9))
+        xp = np.arange(len(profiles))
+        bw = 0.35
+
+        # (0, 0): Tasa de Éxito
+        axs[0, 0].bar(xp - bw/2, succ_solo, bw, label="Sin Copiloto (Solo)", color="#e74c3c", alpha=0.85)
+        axs[0, 0].bar(xp + bw/2, succ_asst, bw, label="Con Copiloto Residual", color="#2ecc71", alpha=0.85)
+        axs[0, 0].set_title("Tasa de Éxito (%)", fontweight="bold", fontsize=11)
+        axs[0, 0].set_xticks(xp)
+        axs[0, 0].set_xticklabels(profiles, rotation=15, ha="right", fontsize=9)
+        axs[0, 0].set_ylim(0, 115)
+        axs[0, 0].grid(axis="y", linestyle="--", alpha=0.4)
+        axs[0, 0].legend(fontsize=9)
+
+        # (0, 1): Caídas al suelo
+        axs[0, 1].bar(xp - bw/2, fall_solo, bw, label="Sin Copiloto (Solo)", color="#c0392b", alpha=0.85)
+        axs[0, 1].bar(xp + bw/2, fall_asst, bw, label="Con Copiloto Residual", color="#27ae60", alpha=0.85)
+        axs[0, 1].set_title("Tasa de Caídas al Suelo (%)", fontweight="bold", fontsize=11)
+        axs[0, 1].set_xticks(xp)
+        axs[0, 1].set_xticklabels(profiles, rotation=15, ha="right", fontsize=9)
+        axs[0, 1].set_ylim(0, 115)
+        axs[0, 1].grid(axis="y", linestyle="--", alpha=0.4)
+        axs[0, 1].legend(fontsize=9)
+
+        # (1, 0): Norma Media de Intervención
+        axs[1, 0].bar(xp, norm_asst, width=0.45, color="#3498db", alpha=0.85)
+        axs[1, 0].set_title(r"Norma Media de Intervención Residual $\|a_r\|_2$", fontweight="bold", fontsize=11)
+        axs[1, 0].set_xticks(xp)
+        axs[1, 0].set_xticklabels(profiles, rotation=15, ha="right", fontsize=9)
+        axs[1, 0].set_ylim(0, 1.05)
+        axs[1, 0].grid(axis="y", linestyle="--", alpha=0.4)
+
+        # (1, 1): Suavidad Jerk
+        axs[1, 1].bar(xp, jerk_asst, width=0.45, color="#9b59b6", alpha=0.85)
+        axs[1, 1].set_title(r"Suavidad de Acción: Jerk Residual $\|\Delta a_r\|_2$", fontweight="bold", fontsize=11)
+        axs[1, 1].set_xticks(xp)
+        axs[1, 1].set_xticklabels(profiles, rotation=15, ha="right", fontsize=9)
+        axs[1, 1].grid(axis="y", linestyle="--", alpha=0.4)
+
+        plt.suptitle("Dashboard Comparativo del Copiloto Residual Constreñido (Schaff & Walter, 2020)", fontsize=13, fontweight="bold")
+        plt.tight_layout()
+        p4 = os.path.join(figs_dir, "copilot_performance_dashboard.png")
+        fig.savefig(p4, dpi=300)
+        plt.close(fig)
+
+        # Sincronizar automáticamente con UEM_TFM/imagenes si existe
+        if os.path.exists(uem_imgs):
+            for pf in ["comparativa_tasa_exito_pilotos.png", "distribucion_terminaciones_copiloto.png", "distribucion_terminaciones_copiloto_lento.png", "copilot_performance_dashboard.png"]:
+                src_f = os.path.join(figs_dir, pf)
+                dst_f = os.path.join(uem_imgs, pf)
+                if os.path.exists(src_f):
+                    try:
+                        import shutil
+                        shutil.copy2(src_f, dst_f)
+                    except OSError:
+                        pass
 
     print(f"Gráficos empíricos guardados en: {figs_dir}/")
 
@@ -716,6 +1003,13 @@ def parse_args():
         default="best",
         choices=["best", "all"],
         help="Modo de evaluación para PPO: 'best' (checkpoint 60k, 100%% éxito) o 'all' (todas las semillas).",
+    )
+    parser.add_argument(
+        "--seeds-mode",
+        type=str,
+        default="100ep",
+        choices=["100ep", "5seeds"],
+        help="Modo de evaluación en Tabla 4.2: '100ep' (100 episodios simétricos por modelo) o '5seeds' (5 semillas x 100 eps = 500 episodios).",
     )
     parser.add_argument(
         "--plots",
@@ -755,69 +1049,61 @@ def main():
         print("\n--- TABLA 4.1: Configuraciones de Evaluación de Pilotos Degradados ---")
         h, rows = get_table_4_1()
         print(format_table_ascii(h, rows))
-        export_latex_tabular(
+        export_spanish_csv(
             h, rows,
-            os.path.join(tables_dir, "tabla_4_1_degraded_configs.tex"),
-            caption="Configuraciones de evaluación para los pilotos degradados",
-            label="tab:configuraciones_pilotos_degradados",
+            os.path.join(tables_dir, "tabla_4_1_degraded_configs.csv"),
         )
 
     # Tabla 4.2
     if args.table in ("all", "4.2"):
         print("\n--- TABLA 4.2: Comparativa de Pilotos Óptimos (PPO vs. SAC vs. TD3) ---")
-        h, rows, m_opt_dict = get_table_4_2(args.results_dir, ppo_mode=args.ppo_mode, return_metrics=True)
+        h, rows, m_opt_dict = get_table_4_2(args.results_dir, ppo_mode=args.ppo_mode, seeds_mode=args.seeds_mode, return_metrics=True)
         print(format_table_ascii(h, rows))
-        export_latex_tabular(
+        export_spanish_csv(
             h, rows,
-            os.path.join(tables_dir, "tabla_4_2_optimal_pilots.tex"),
-            caption="Comparativa cuantitativa de desempeño entre pilotos óptimos PPO, SAC y TD3",
-            label="tab:comparativa_pilotos_optimos",
+            os.path.join(tables_dir, "tabla_4_2_optimal_pilots.csv"),
         )
 
     # Tabla 4.3
     if args.table in ("all", "4.3"):
         print("\n--- TABLA 4.3: Desempeño de Pilotos Sintéticos Degradados y Heurístico ---")
-        h, rows, m_deg_dict = get_table_4_3(args.results_dir, return_metrics=True)
+        h, rows, m_deg_dict = get_table_4_3(args.results_dir, seeds_mode=args.seeds_mode, return_metrics=True)
         print(format_table_ascii(h, rows))
-        export_latex_tabular(
+        export_spanish_csv(
             h, rows,
-            os.path.join(tables_dir, "tabla_4_3_synthetic_pilots.tex"),
-            caption="Comparativa cuantitativa de desempeño entre pilotos sintéticos degradados y control heurístico",
-            label="tab:comparativa_pilotos_sinteticos",
+            os.path.join(tables_dir, "tabla_4_3_synthetic_pilots.csv"),
         )
 
     # Tabla 4.4
     if args.table in ("all", "4.4"):
-        print("\n--- TABLA 4.4: Desempeño del Copiloto Residual (Piloto Ruidoso σ = 0.30) ---")
-        h, rows, m_cop_noisy_dict = get_table_4_4(args.results_dir, return_metrics=True)
+        print("\n--- TABLA 4.4: Desempeño del Copiloto Residual (Piloto Ruidoso σ = 0.50 y σ = 1.00) ---")
+        h, rows, m_cop_noisy_dict = get_table_4_4(args.results_dir, seeds_mode=args.seeds_mode, return_metrics=True)
         print(format_table_ascii(h, rows))
-        export_latex_tabular(
+        export_spanish_csv(
             h, rows,
-            os.path.join(tables_dir, "tabla_4_4_copilot_noisy.tex"),
-            caption="Comparativa de desempeño del copiloto residual asistiendo a un piloto ruidoso ($\\sigma = 0.30$)",
-            label="tab:comparativa_copilotos",
+            os.path.join(tables_dir, "tabla_4_4_copilot_noisy.csv"),
         )
+
+    m_cop_slow_dict = {}
 
     # Tabla 4.5
     if args.table in ("all", "4.5"):
-        print("\n--- TABLA 4.5: Desempeño del Copiloto Residual (Piloto Lento / Laggy) ---")
-        h, rows = get_table_4_5(args.results_dir, return_metrics=False)
+        print("\n--- TABLA 4.5: Desempeño del Copiloto Residual (Pilotos Laggy y StandBy) ---")
+        h, rows, m_cop_slow_dict = get_table_4_5(args.results_dir, seeds_mode=args.seeds_mode, return_metrics=True)
         print(format_table_ascii(h, rows))
-        export_latex_tabular(
+        export_spanish_csv(
             h, rows,
-            os.path.join(tables_dir, "tabla_4_5_copilot_slow.tex"),
-            caption="Comparativa cuantitativa de desempeño del copiloto residual asistiendo a un piloto lento",
-            label="tab:comparativa_copiloto_lento",
+            os.path.join(tables_dir, "tabla_4_5_copilot_slow.csv"),
         )
 
     # Generar gráficos usando métricas calculadas
     if args.plots and HAS_MATPLOTLIB:
         print("\n--- Regeneración Dinámica de Figuras Comparativas (Matplotlib) ---")
-        generate_reproduced_plots(args.output_dir, args.results_dir, m_opt_dict, m_deg_dict, m_cop_noisy_dict)
+        generate_reproduced_plots(args.output_dir, args.results_dir, m_opt_dict, m_deg_dict, m_cop_noisy_dict, m_cop_slow_dict)
 
     print(f"\n{'='*78}")
     print(f" PROCESO COMPLETADO EXITOSAMENTE")
-    print(f"  - Tablas LaTeX exportadas en : {tables_dir}/")
+    print(f"  - Tablas CSV exportadas en   : {tables_dir}/")
     if HAS_MATPLOTLIB:
         print(f"  - Figuras PNG generadas en   : {os.path.join(args.output_dir, 'figures')}/")
     print(f"{'='*78}\n")

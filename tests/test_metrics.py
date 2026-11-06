@@ -125,11 +125,62 @@ def test_evaluate_pilot_trajectory_plotting():
         assert "trajectories" in results
         assert len(results["trajectories"]) == 2
         assert len(results["trajectories"][0]) > 0
-        assert os.path.exists(plot_file), "La imagen PNG de trayectoria no fue generada"
+        try:
+            import matplotlib
+            assert os.path.exists(plot_file), "La imagen PNG de trayectoria no fue generada"
+        except ImportError:
+            pass
+
+
+def test_evaluate_pilot_distinct_episode_seeds_100_episodes():
+    """Validate that evaluate_pilot uses a master seed to generate distinct, unique seeds for each episode."""
+    env = CornerEnvContinuous(max_episode_steps=2, verbose=0)
+
+    class SeedTrackingPilot(BasePilot):
+        def __init__(self):
+            self.received_seeds = []
+
+        def reset(self, seed: int | None = None):
+            self.received_seeds.append(seed)
+
+        def get_action(self, observation: np.ndarray, **kwargs) -> np.ndarray:
+            return np.zeros(4, dtype=np.float32)
+
+    pilot = SeedTrackingPilot()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_file = os.path.join(tmpdir, "test_100_episodes.csv")
+        results = evaluate_pilot(
+            env=env,
+            pilot=pilot,
+            n_episodes=100,
+            seed=1000,
+            verbose=0,
+            save_csv_path=csv_file,
+        )
+
+        assert results["n_episodes"] == 100
+        assert len(results["episode_seeds"]) == 100
+        # Check that all 100 seeds are unique
+        assert len(set(results["episode_seeds"])) == 100, "Las 100 semillas de evaluación deben ser únicas entre sí"
+        # Check that the pilot received all 100 distinct seeds
+        assert len(pilot.received_seeds) == 100
+        assert pilot.received_seeds == results["episode_seeds"]
+
+        # Validate CSV contents
+        import csv
+        with open(csv_file, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            csv_rows = list(reader)
+        assert len(csv_rows) == 100
+        assert "seed" in csv_rows[0]
+        csv_seeds = [int(r["seed"]) for r in csv_rows]
+        assert csv_seeds == results["episode_seeds"]
 
 
 if __name__ == "__main__":
     test_create_pilot_instance()
     test_evaluate_pilot_mock_environment()
     test_evaluate_pilot_trajectory_plotting()
+    test_evaluate_pilot_distinct_episode_seeds_100_episodes()
     print("Todos los tests de métricas pasaron exitosamente.")
