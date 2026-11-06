@@ -28,6 +28,25 @@ except ImportError:  # pragma: no cover
     pd = None
 
 from src.pilots.base_pilot import BasePilot
+import math
+
+
+def compute_wilson_ci(k: int, n: int, confidence: float = 0.95) -> tuple[float, float]:
+    """
+    Calcula el intervalo de confianza de Wilson para una proporción binomial (k éxitos en n ensayos).
+    Proporciona cotas asimétricas rigurosas en [0.0, 100.0]%, evitando el colapso de la aproximación
+    normal Wald cuando p = 0 o p = 1.
+    """
+    if n <= 0:
+        return 0.0, 0.0
+    z = 1.95996  # 95% bilateral
+    p = float(k) / float(n)
+    denom = 1.0 + (z**2) / float(n)
+    center = (p + (z**2) / (2.0 * float(n))) / denom
+    spread = (z * math.sqrt(max(0.0, p * (1.0 - p) / float(n) + (z**2) / (4.0 * (float(n)**2))))) / denom
+    lower = max(0.0, center - spread) * 100.0
+    upper = min(1.0, center + spread) * 100.0
+    return round(lower, 2), round(upper, 2)
 
 
 def plot_episode_trajectory(
@@ -150,23 +169,39 @@ def evaluate_pilot(
     successes: list[bool] = []
     terminations: list[str] = []
     final_distances: list[float] = []
-    final_altitudes_mm: list[float] = []
+    final_obstacle_distances: list[float] = []
+    final_altitudes_m: list[float] = []
 
-    rng = np.random.default_rng(seed)
+    # Generate a reproducible sequence of distinct episode seeds from the master evaluation seed
+    if seed is not None:
+        rng = np.random.default_rng(seed)
+        episode_seeds: list[int | None] = [int(s) for s in rng.integers(1, 10_000_000, size=n_episodes)]
+    else:
+        episode_seeds = [None] * n_episodes
 
     if verbose >= 1:
         print(f"\n{'='*65}")
         print(f" Iniciando evaluación: {n_episodes} episodios")
         print(f" Piloto: {pilot.__class__.__name__}")
+        print(f" Semilla maestra de evaluación: {seed} (independiente de entrenamiento)")
+        if seed is not None and len(episode_seeds) > 0:
+            preview_seeds = (
+                f"[{episode_seeds[0]}, {episode_seeds[1]}, ... {episode_seeds[-1]}]"
+                if len(episode_seeds) > 3
+                else str(episode_seeds)
+            )
+            print(f" Semillas únicas por episodio: {preview_seeds}")
         print(f"{'='*65}")
 
     all_episode_trajectories: list[list[list[float]]] = []
 
-    for ep in range(1, n_episodes + 1):
-        ep_seed = int(rng.integers(0, 1_000_000)) if seed is not None else None
+    for ep, ep_seed in enumerate(episode_seeds, start=1):
         obs, info = env.reset(seed=ep_seed)
         if hasattr(pilot, "reset"):
-            pilot.reset()
+            try:
+                pilot.reset(seed=ep_seed)
+            except TypeError:
+                pilot.reset()
 
         ep_reward = 0.0
         ep_steps = 0
@@ -222,20 +257,30 @@ def evaluate_pilot(
 
         final_dist = float(getattr(env, "dist_min_target", 0.0))
 
+        # Distancia mínima al obstáculo más cercano (menor de los 4 sensores láser ToF)
+        unwrapped_env = getattr(env, "unwrapped", env)
+        d_front = getattr(env, "dist_front", getattr(unwrapped_env, "dist_front", 2000.0))
+        d_back = getattr(env, "dist_back", getattr(unwrapped_env, "dist_back", 2000.0))
+        d_right = getattr(env, "dist_right", getattr(unwrapped_env, "dist_right", 2000.0))
+        d_left = getattr(env, "dist_left", getattr(unwrapped_env, "dist_left", 2000.0))
+        min_obs_dist = round(float(min(d_front, d_back, d_right, d_left)) / 1000.0, 3)
+
         rewards.append(ep_reward)
         lengths.append(ep_steps)
         successes.append(is_success)
         terminations.append(term_reason)
         final_distances.append(final_dist)
-        final_alt_mm = float(getattr(env, "alt", getattr(env, "z_global", info.get("altitude", 0.0)))) * 1000.0
-        final_altitudes_mm.append(round(final_alt_mm, 2))
+        final_obstacle_distances.append(min_obs_dist)
+        final_alt_m = round(float(getattr(env, "alt", getattr(unwrapped_env, "alt", getattr(env, "z_global", info.get("altitude", 0.0))))), 3)
+        final_altitudes_m.append(final_alt_m)
 
         if verbose >= 1:
             icon = "✔ ÉXITO" if is_success else f"✘ FIN ({term_reason})"
+            seed_info = f" | Semilla: {ep_seed}" if ep_seed is not None else ""
             print(
-                f" Episodio {ep:3d}/{n_episodes}: {icon:15s} | "
+                f" Episodio {ep:3d}/{n_episodes}{seed_info}: {icon:15s} | "
                 f"Pasos: {ep_steps:4d} | Recompensa: {ep_reward:8.2f} | "
-                f"Dist. Final: {final_dist:.3f}m | Alt. Final: {final_alt_mm:.1f}mm"
+                f"Dist. Meta: {final_dist:.3f}m | Obstáculo Mín: {min_obs_dist:.3f}m | Alt. Final: {final_alt_m:.3f}m"
             )
 
     # Compute aggregate statistics
@@ -244,37 +289,52 @@ def evaluate_pilot(
     crash_count = sum(1 for t in terminations if t in ("fall", "out_of_bounds"))
     timeout_count = sum(1 for t in terminations if t == "timeout")
 
+    succ_ci_low, succ_ci_high = compute_wilson_ci(success_count, total_eps)
+    crash_ci_low, crash_ci_high = compute_wilson_ci(crash_count, total_eps)
+    timeout_ci_low, timeout_ci_high = compute_wilson_ci(timeout_count, total_eps)
+
     metrics_summary = {
         "n_episodes": total_eps,
+        "master_seed": seed,
+        "episode_seeds": episode_seeds,
         "success_rate": float(success_count / total_eps) if total_eps > 0 else 0.0,
+        "success_wilson_ci_95": (succ_ci_low, succ_ci_high),
         "crash_rate": float(crash_count / total_eps) if total_eps > 0 else 0.0,
+        "crash_wilson_ci_95": (crash_ci_low, crash_ci_high),
         "timeout_rate": float(timeout_count / total_eps) if total_eps > 0 else 0.0,
+        "timeout_wilson_ci_95": (timeout_ci_low, timeout_ci_high),
         "reward_mean": float(np.mean(rewards)) if rewards else 0.0,
         "reward_std": float(np.std(rewards)) if rewards else 0.0,
         "length_mean": float(np.mean(lengths)) if lengths else 0.0,
         "length_std": float(np.std(lengths)) if lengths else 0.0,
         "final_distance_mean": float(np.mean(final_distances)) if final_distances else 0.0,
         "final_distance_std": float(np.std(final_distances)) if final_distances else 0.0,
-        "final_altitude_mean_mm": float(np.mean(final_altitudes_mm)) if final_altitudes_mm else 0.0,
-        "final_altitude_std_mm": float(np.std(final_altitudes_mm)) if final_altitudes_mm else 0.0,
+        "final_obstacle_distance_mean": float(np.mean(final_obstacle_distances)) if final_obstacle_distances else 0.0,
+        "final_obstacle_distance_std": float(np.std(final_obstacle_distances)) if final_obstacle_distances else 0.0,
+        "final_altitude_mean_m": float(np.mean(final_altitudes_m)) if final_altitudes_m else 0.0,
+        "final_altitude_std_m": float(np.std(final_altitudes_m)) if final_altitudes_m else 0.0,
         "rewards": rewards,
         "lengths": lengths,
         "successes": successes,
         "terminations": terminations,
         "final_distances": final_distances,
-        "final_altitudes_mm": final_altitudes_mm,
+        "final_obstacle_distances": final_obstacle_distances,
+        "final_altitudes_m": final_altitudes_m,
     }
 
     if verbose >= 1:
         print(f"\n{'-'*65}")
-        print(" RESUMEN DE EVALUACIÓN (Patrón Tesis 2025):")
-        print(f"  Tasa de Éxito   (Success Rate) : {metrics_summary['success_rate'] * 100:.1f}% ({success_count}/{total_eps})")
-        print(f"  Tasa de Caídas  (Crash Rate)   : {metrics_summary['crash_rate'] * 100:.1f}% ({crash_count}/{total_eps})")
-        print(f"  Tasa de Tiempo  (Timeout Rate) : {metrics_summary['timeout_rate'] * 100:.1f}% ({timeout_count}/{total_eps})")
+        print(" RESUMEN DE EVALUACIÓN (Patrón Tesis 2025 - Intervalos Wilson 95%):")
+        print(f"  Episodios Evaluados            : {total_eps}")
+        print(f"  Semilla Maestra de Evaluación  : {seed}")
+        print(f"  Tasa de Éxito   (Success Rate) : {metrics_summary['success_rate'] * 100:.1f}% [{succ_ci_low:.1f}%, {succ_ci_high:.1f}%] ({success_count}/{total_eps})")
+        print(f"  Tasa de Caídas  (Crash Rate)   : {metrics_summary['crash_rate'] * 100:.1f}% [{crash_ci_low:.1f}%, {crash_ci_high:.1f}%] ({crash_count}/{total_eps})")
+        print(f"  Tasa de Tiempo  (Timeout Rate) : {metrics_summary['timeout_rate'] * 100:.1f}% [{timeout_ci_low:.1f}%, {timeout_ci_high:.1f}%] ({timeout_count}/{total_eps})")
         print(f"  Recompensa Media               : {metrics_summary['reward_mean']:.2f} ± {metrics_summary['reward_std']:.2f}")
         print(f"  Longitud Media (pasos)         : {metrics_summary['length_mean']:.1f} ± {metrics_summary['length_std']:.1f}")
-        print(f"  Distancia Final Media          : {metrics_summary['final_distance_mean']:.3f}m ± {metrics_summary['final_distance_std']:.3f}m")
-        print(f"  Altitud Final Media            : {metrics_summary['final_altitude_mean_mm']:.1f}mm ± {metrics_summary['final_altitude_std_mm']:.1f}mm")
+        print(f"  Distancia Final Media (Meta)   : {metrics_summary['final_distance_mean']:.3f}m ± {metrics_summary['final_distance_std']:.3f}m")
+        print(f"  Dist. Obstáculo Mín Media      : {metrics_summary['final_obstacle_distance_mean']:.3f}m ± {metrics_summary['final_obstacle_distance_std']:.3f}m")
+        print(f"  Altitud Final Media            : {metrics_summary['final_altitude_mean_m']:.3f}m ± {metrics_summary['final_altitude_std_m']:.3f}m")
         print(f"{'='*65}\n")
 
     # Optional export to CSV file
@@ -285,12 +345,14 @@ def evaluate_pilot(
 
         data = {
             "episode": list(range(1, total_eps + 1)),
+            "seed": episode_seeds,
             "reward": rewards,
             "length": lengths,
             "success": successes,
             "termination": terminations,
             "final_distance": final_distances,
-            "final_altitude_mm": final_altitudes_mm,
+            "min_obstacle_distance": final_obstacle_distances,
+            "final_altitude_m": final_altitudes_m,
         }
 
         if pd is not None:
@@ -301,9 +363,9 @@ def evaluate_pilot(
             import csv
             with open(save_csv_path, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(["episode", "reward", "length", "success", "termination", "final_distance", "final_altitude_mm"])
+                writer.writerow(["episode", "seed", "reward", "length", "success", "termination", "final_distance", "min_obstacle_distance", "final_altitude_m"])
                 for i in range(total_eps):
-                    writer.writerow([i + 1, rewards[i], lengths[i], successes[i], terminations[i], final_distances[i], final_altitudes_mm[i]])
+                    writer.writerow([i + 1, episode_seeds[i], rewards[i], lengths[i], successes[i], terminations[i], final_distances[i], final_obstacle_distances[i], final_altitudes_m[i]])
 
         if verbose >= 1:
             print(f"[Métricas] Resultados guardados en: {save_csv_path}")
@@ -347,6 +409,7 @@ def create_pilot_instance(
     from src.pilots.laggy_pilot import LaggyPilot
     from src.pilots.noisy_pilot import NoisyPilot
     from src.pilots.optimal_pilot import OptimalPilot
+    from src.pilots.standby_pilot import StandByPilot
 
     pt = pilot_type.lower().strip()
 
@@ -367,9 +430,13 @@ def create_pilot_instance(
         base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
         return NoisyPilot(optimal_pilot=base, sigma=sigma, seed=seed)
     elif pt == "laggy":
-        # Optimal base pilot with injected delay
+        # Optimal base pilot with reaction delay (Schaff & Walter, 2020)
         base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
         return LaggyPilot(optimal_pilot=base, p_repeat=p_repeat, seed=seed)
+    elif pt == "standby":
+        # Optimal base pilot with packet drop and hover failsafe mode (zeros)
+        base = OptimalPilot(backend=backend, checkpoint_path=checkpoint, deterministic=True)
+        return StandByPilot(optimal_pilot=base, p_drop=p_repeat, seed=seed)
     elif pt == "assisted":
         from src.copilot.residual_policy import AssistedPilot, ResidualPolicy
 
@@ -407,8 +474,8 @@ def parse_args():
         "--pilot-type",
         type=str,
         default="optimal",
-        choices=["optimal", "heuristic", "noisy", "laggy", "assisted"],
-        help="Tipo de piloto a evaluar (optimal, heuristic, noisy, laggy, assisted).",
+        choices=["optimal", "heuristic", "noisy", "laggy", "standby", "assisted"],
+        help="Tipo de piloto a evaluar (optimal, heuristic, noisy, laggy, standby, assisted).",
     )
     parser.add_argument(
         "--checkpoint",
@@ -420,7 +487,7 @@ def parse_args():
         "--backend",
         type=str,
         default="sb3_ppo",
-        choices=["sb3_ppo", "rltools_sac", "heuristic", "dummy"],
+        choices=["sb3_ppo", "rltools_sac", "rltools_td3", "heuristic", "dummy"],
         help="Backend para OptimalPilot.",
     )
     parser.add_argument(
@@ -433,8 +500,8 @@ def parse_args():
     parser.add_argument(
         "--episodes",
         type=int,
-        default=10,
-        help="Cantidad de episodios a evaluar (por defecto: 10).",
+        default=100,
+        help="Cantidad de episodios a evaluar (por defecto: 100).",
     )
     parser.add_argument(
         "--corner",
@@ -451,8 +518,8 @@ def parse_args():
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
-        help="Semilla para reproducibilidad.",
+        default=1000,
+        help="Semilla maestra de evaluación (independiente de las semillas 7 y 42 de entrenamiento; por defecto: 1000). A partir de ella se generan determinísticamente las semillas únicas para cada episodio.",
     )
     parser.add_argument(
         "--sigma",
@@ -476,7 +543,7 @@ def parse_args():
         "--copilot-backend",
         type=str,
         default="auto",
-        choices=["auto", "sb3_ppo", "sb3_sac", "rltools_sac", "dummy"],
+        choices=["auto", "sb3_ppo", "sb3_sac", "rltools_sac", "rltools_td3", "dummy"],
         help="Backend para el copiloto si pilot-type=assisted.",
     )
     parser.add_argument(
@@ -489,7 +556,7 @@ def parse_args():
         "--base-pilot-type",
         type=str,
         default="noisy",
-        choices=["optimal", "heuristic", "noisy", "laggy"],
+        choices=["optimal", "heuristic", "noisy", "laggy", "standby"],
         help="Tipo de piloto base a asistir si pilot-type=assisted (por defecto: noisy).",
     )
     parser.add_argument(
