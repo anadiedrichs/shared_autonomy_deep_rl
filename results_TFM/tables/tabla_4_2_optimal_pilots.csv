@@ -1,0 +1,10 @@
+Métrica de evaluación;PPO (SB3, 100 ep);SAC (RLtools, 100 ep);TD3 (RLtools, 100 ep)
+Tasa de éxito (%);100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100)
+Recompensa acumulada media;+97,83;+117,17;+117,21
+Longitud media de episodio;689,00 pasos;303,00 pasos;302,00 pasos
+Tiempo medio de vuelo;22,05 s;9,70 s;9,66 s
+Distancia final al objetivo;0,15 m;0,15 m;0,15 m
+Distancia mín. a obstáculo (láser);0,25 m;0,16 m;0,21 m
+Altitud final media (m);0,69 m;0,74 m;0,66 m
+Supervivencia / Integridad;100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100)
+Artefacto de despliegue;Archivo .zip (PyTorch);Cabecera C++ estática (.h);Cabecera C++ estática (.h)

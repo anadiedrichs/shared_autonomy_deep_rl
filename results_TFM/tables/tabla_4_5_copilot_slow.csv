@@ -1,0 +1,12 @@
+Métrica de evaluación;Laggy solo (p_repeat = 0,80);Con copiloto (p_repeat = 0,80);StandBy solo (p_drop = 0,80);Con copiloto (p_drop = 0,80)
+Tasa de éxito (%);100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100);89,0% [81,4, 93,8]% (89/100);70,0% [60,4, 78,1]% (70/100)
+Recompensa media acumulada;+117,05 ± 0,13;-41,12 ± 3,43;+92,21 ± 45,94;-79,67 ± 88,74
+Longitud media de episodio (pasos);303,11 ± 1,47 pasos;638,04 ± 40,85 pasos;313,25 ± 151,33 pasos;528,69 ± 249,27 pasos
+Tiempo medio de vuelo;9,70 s;20,42 s;10,02 s;16,92 s
+Distancia final a la meta (m);0,15 ± 0,00 m;0,15 m;0,27 ± 0,44 m;0,37 ± 0,52 m
+Caídas al suelo (fall);0,0% [0,0, 3,7]% (0/100);0,0% [0,0, 3,7]% (0/100);9,0% [4,8, 16,2]% (9/100);7,0% [3,4, 13,8]% (7/100)
+Salida de límites (out of bounds);0,0% [0,0, 3,7]% (0/100);0,0% [0,0, 3,7]% (0/100);0,0% [0,0, 3,7]% (0/100);7,0% [3,4, 13,8]% (7/100)
+Tiempo agotado (timeout);0,0% [0,0, 3,7]% (0/100);0,0% [0,0, 3,7]% (0/100);2,0% [0,6, 7,0]% (2/100);16,0% [10,1, 24,4]% (16/100)
+Supervivencia / Integridad estructural;100,0% [96,3, 100,0]% (100/100);100,0% [96,3, 100,0]% (100/100);91,0% [83,8, 95,2]% (91/100);86,0% [77,9, 91,5]% (86/100)
+Norma de intervención media (||a_r||);0,00;0,79 ± 0,01;0,00;0,71 ± 0,06
+Suavidad de acción (Jerk medio);0,00;0,02 ± 0,00;0,00;0,16 ± 0,04

@@ -1,0 +1,6 @@
+Perfil;Identificador;Parámetro clave;Mecanismo de falla;Impacto operativo
+HeuristicPilot (Control P);heuristic_prop;K_p = 2,5 (Directo);Control proporcional cinemático sin horizonte temporal;Navegación geométrica nominal determinista de referencia
+NoisyPilot (Moderado);noisy_sigma_0,5;sigma = 0,50;Ruido gaussiano continuo aditivo sobre velocidades;Desviación angular y deriva espacial acumulativa
+NoisyPilot (Severo);noisy_sigma_1,0;sigma = 1,00;Ruido aditivo de rango dinámico completo;Control errático y trayectorias de choque perimetral
+LaggyPilot (Schaff & Walter);laggy_p_0,8;p_repeat = 0,80;Repetición estocástica del comando previo (ZOH);Acumulación inercial, sobreoscilación y timeout
+StandByPilot (Signal Drop);standby_p_0,8;p_drop = 0,80;Pérdida de paquetes con conmutación reactiva a hover;Detención frecuente del avance pero alta integridad
