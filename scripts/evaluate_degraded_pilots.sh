@@ -40,7 +40,7 @@ cd "${PROJECT_ROOT}"
 
 # Configuración por defecto
 SEEDS=(${SEEDS:-42 123 256 512 789})
-EPISODES=${EPISODES:-20}
+EPISODES=${EPISODES:-100}
 CORNER=${CORNER:-cone_1}
 RESULTS_DIR=${RESULTS_DIR:-results_TFM}
 OUT_DIR="${RESULTS_DIR}/logs/degraded"

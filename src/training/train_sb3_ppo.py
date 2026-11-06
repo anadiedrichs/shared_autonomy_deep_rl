@@ -188,7 +188,8 @@ def parse_args():
         description="Entrenamiento de piloto óptimo con PPO (Stable-Baselines3)."
     )
     parser.add_argument(
-        "--timesteps",
+        "--timesteps", "--steps",
+        dest="timesteps",
         type=int,
         default=100_000,
         help="Número total de pasos de simulación (timesteps).",
@@ -201,7 +202,13 @@ def parse_args():
         default=True,
         help="Muestra u oculta la barra de progreso en consola (requiere rich y tqdm).",
     )
-    parser.add_argument("--lr", type=float, default=3e-4, help="Tasa de aprendizaje (por defecto 3e-4).")
+    parser.add_argument(
+        "--lr", "--learning-rate",
+        dest="lr",
+        type=float,
+        default=3e-4,
+        help="Tasa de aprendizaje (por defecto 3e-4).",
+    )
     parser.add_argument("--gamma", type=float, default=0.97, help="Factor de descuento gamma.")
     parser.add_argument(
         "--ent-coef",
@@ -222,7 +229,8 @@ def parse_args():
         "--log-dir", type=str, default="./logs/ppo", help="Directorio de logs y TensorBoard."
     )
     parser.add_argument(
-        "--save-path",
+        "--save-path", "--model-path",
+        dest="save_path",
         type=str,
         default="./models/ppo_optimal_pilot",
         help="Ruta destino para guardar el modelo .zip.",

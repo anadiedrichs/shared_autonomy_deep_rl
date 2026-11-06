@@ -91,30 +91,22 @@ class OptimalPilot(BasePilot):
 
         elif self.backend in ("rltools_sac", "rltools_td3"):
             # Support for RLtools models and checkpoints (exported .h files)
-            loaded = False
-            try:
-                import rltools
-                if (
-                    hasattr(rltools, "load_checkpoint_from_path")
-                    and self.checkpoint_path is not None
-                    and self.checkpoint_path.endswith((".h", ".hpp", ".c"))
-                ):
-                    self._model = rltools.load_checkpoint_from_path(self.checkpoint_path)
-                    loaded = True
-                elif hasattr(rltools, "load"):
-                    self._model = rltools.load(self.checkpoint_path)
-                    loaded = True
-            except (ImportError, Exception):
-                loaded = False
-
-            if not loaded and self.checkpoint_path is not None and self.checkpoint_path.endswith((".h", ".hpp", ".c")):
-                # Fast standalone parser fallback (NumPy inference directly from .h memory)
+            if self.checkpoint_path is not None and self.checkpoint_path.endswith((".h", ".hpp", ".c")):
+                # Standalone parser that extracts exact weights from C/C++ header memory blocks
                 from src.training.rltools_td3 import RLtoolsParsedPolicy
                 self._model = RLtoolsParsedPolicy(self.checkpoint_path)
-                loaded = True
+            else:
+                loaded = False
+                try:
+                    import rltools
+                    if hasattr(rltools, "load"):
+                        self._model = rltools.load(self.checkpoint_path)
+                        loaded = True
+                except (ImportError, Exception):
+                    loaded = False
 
-            if not loaded and self._model is None:
-                self._model = self.checkpoint_path
+                if not loaded and self._model is None:
+                    self._model = self.checkpoint_path
 
     def get_action(self, observation: np.ndarray) -> np.ndarray:
         """

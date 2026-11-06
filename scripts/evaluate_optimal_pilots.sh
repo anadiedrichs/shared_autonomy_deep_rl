@@ -191,7 +191,7 @@ for ALGO in "${ALGOS[@]}"; do
             --backend "${BACKEND}" \
             --checkpoint "${MODEL_FILE}" \
             --episodes "${EPISODES}" \
-            --seed "${EVAL_SEED}" \
+            --seed "${SEED}" \
             --corner "${CORNER}" \
             --save-csv "${CSV_FILE}" \
             --plot-trajectory-png "${PNG_FILE}" \

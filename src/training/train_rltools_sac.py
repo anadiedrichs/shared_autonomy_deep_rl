@@ -42,13 +42,21 @@ class RLtoolsEpisodeMetricsWrapper(gym.Wrapper if gym is not None and hasattr(gy
     2. TensorBoard scalars (rollout/ep_rew_mean, rollout/ep_len_mean, rollout/success_rate)
     """
 
-    def __init__(self, env, log_dir: str | None = None, writer=None, verbose: bool = True):
+    def __init__(
+        self,
+        env,
+        log_dir: str | None = None,
+        writer=None,
+        verbose: bool = True,
+        algorithm_name: str = "RLtools-SAC",
+    ):
         if gym is not None and hasattr(gym, "Wrapper"):
             super().__init__(env)
         self.env = env
         self.log_dir = log_dir
         self.writer = writer
         self.verbose = verbose
+        self.algorithm_name = algorithm_name
 
         self.episode_count = 0
         self.total_env_steps = 0
@@ -128,7 +136,7 @@ class RLtoolsEpisodeMetricsWrapper(gym.Wrapper if gym is not None and hasattr(gy
             if self.verbose:
                 status_icon = "✔ ÉXITO" if is_success else f"✘ {term_reason}"
                 print(
-                    f"[RLtools-SAC] Ep {self.episode_count:3d} ({status_icon}) | "
+                    f"[{self.algorithm_name}] Ep {self.episode_count:3d} ({status_icon}) | "
                     f"Paso: {self.total_env_steps:6d} | "
                     f"Rew: {self.episode_reward:7.2f} | "
                     f"Long: {self.episode_length:4d} | "
@@ -154,6 +162,7 @@ def make_env_factory(
     log_dir: str | None = None,
     writer=None,
     verbose: bool = True,
+    algorithm_name: str = "RLtools-SAC",
 ):
     """
     Create the environment factory required by the RLtools interface.
@@ -181,6 +190,7 @@ def make_env_factory(
                 log_dir=log_dir,
                 writer=writer,
                 verbose=verbose,
+                algorithm_name=algorithm_name,
             )
         return _env_instance
 
@@ -424,7 +434,8 @@ def parse_args():
         description="Entrenamiento del piloto óptimo con SAC (RLtools) y exportación a header C."
     )
     parser.add_argument(
-        "--steps",
+        "--steps", "--timesteps",
+        dest="steps",
         type=int,
         default=100_000,
         help="Número máximo de pasos de entrenamiento.",
@@ -443,7 +454,8 @@ def parse_args():
         "--corner", type=str, default="cone_1", help="Nombre del cono objetivo en Webots."
     )
     parser.add_argument(
-        "--export-path",
+        "--export-path", "--save-path", "--model-path",
+        dest="export_path",
         type=str,
         default="./models/optimal_pilot_sac_checkpoint.h",
         help="Ruta destino para el header C exportado.",
