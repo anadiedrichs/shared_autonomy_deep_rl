@@ -101,22 +101,26 @@ class ResidualPolicy:
                     f"Error al cargar checkpoint SB3 desde {self.checkpoint_path}: {e}"
                 )
 
-        elif self.backend == "rltools_sac":
-            try:
-                import rltools
+        elif self.backend in ("rltools_sac", "rltools_td3"):
+            if self.checkpoint_path is not None and self.checkpoint_path.endswith((".h", ".hpp", ".c")):
+                from src.training.rltools_td3 import RLtoolsParsedPolicy
+                self._model = RLtoolsParsedPolicy(self.checkpoint_path)
+            else:
+                try:
+                    import rltools
 
-                if hasattr(rltools, "load_checkpoint_from_path"):
-                    self._model = rltools.load_checkpoint_from_path(self.checkpoint_path)
-                elif hasattr(rltools, "load"):
-                    self._model = rltools.load(self.checkpoint_path)
-                else:
-                    self._model = self.checkpoint_path
-            except ImportError:
-                raise ImportError("rltools no está disponible para cargar header C++.")
-            except Exception as e:
-                raise RuntimeError(
-                    f"Error al cargar checkpoint RLtools desde {self.checkpoint_path}: {e}"
-                )
+                    if hasattr(rltools, "load_checkpoint_from_path"):
+                        self._model = rltools.load_checkpoint_from_path(self.checkpoint_path)
+                    elif hasattr(rltools, "load"):
+                        self._model = rltools.load(self.checkpoint_path)
+                    else:
+                        self._model = self.checkpoint_path
+                except ImportError:
+                    raise ImportError("rltools no está disponible para cargar header C++.")
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Error al cargar checkpoint RLtools desde {self.checkpoint_path}: {e}"
+                    )
 
     def get_action(
         self,

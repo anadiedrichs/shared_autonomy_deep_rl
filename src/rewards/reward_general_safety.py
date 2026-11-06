@@ -20,7 +20,7 @@ from src.rewards.reward_goal_directed import obstacle_proximity_penalization
 
 def obstacle_proximity_quadratic_penalization(
     distance_to_obstacle_m: float,
-    safe_distance_m: float = 0.35,
+    safe_distance_m: float = 0.15,
     amplitude: float = 1.0,
 ) -> float:
     """
@@ -87,7 +87,7 @@ def general_safety_reward(
     lambda_intervention: float = 0.50,
     action_smoothness_weight: float = 0.05,
     obstacle_weight: float = 1.0,
-    obstacle_safe_distance_m: float = 0.35,
+    obstacle_safe_distance_m: float = 0.15,
     obstacle_decay: float = 0.15,
     proximity_mode: str = "quadratic",
     collision_penalty: float = 50.0,
@@ -180,7 +180,7 @@ def compute_general_safety_reward(
     lambda_intervention: float = 0.50,
     action_smoothness_weight: float = 0.05,
     obstacle_weight: float = 1.0,
-    obstacle_safe_distance_m: float = 0.35,
+    obstacle_safe_distance_m: float = 0.15,
     obstacle_decay: float = 0.15,
     proximity_mode: str = "quadratic",
     collision_penalty: float = 50.0,
